@@ -12,7 +12,8 @@ import logger from "../utils/logger";
 export const courseWorker = new Worker<CourseGenerationJob>(
   COURSE_QUEUE_NAME,
   async (job: Job<CourseGenerationJob>) => {
-    const { userId, topic } = job.data;
+    // ✅ FIX: Extract userAnswers from job data so we can pass them to the service
+    const { userId, topic, userAnswers } = job.data;
 
     try {
       logger.info(`⚙️ [Worker] Job ${job.id} started for ${userId}`);
@@ -37,8 +38,10 @@ export const courseWorker = new Worker<CourseGenerationJob>(
       });
 
       // 3. EXECUTE THE HEAVY SERVICE
-      // Note: We await this. It might take 10-40 seconds.
-      const course = await courseService.generateCourse(userId, topic);
+      // ✅ FIX: Pass userAnswers to the service for Context Injection
+      const course = await courseService.generateCourse(userId, topic, {
+        userAnswers,
+      });
 
       // 4. Notify Frontend: Finalizing
       socketService.emitToUser(userId, "job_progress", {

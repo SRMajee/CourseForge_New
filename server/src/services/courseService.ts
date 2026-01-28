@@ -11,6 +11,17 @@ import { semanticCache } from "../utils/semanticCache";
 import { outlineSchema } from "../ai/parsers/courseSchema";
 import { researchService } from "./ResearchService";
 import { creditService } from "./creditService"; // 👈 Import
+import { redisClient } from "../config/redis";
+import { clarificationService } from "./ClarificationService";
+export class ClarificationNeededError extends Error {
+  public data: any;
+  constructor(data: any) {
+    super("Clarification Needed");
+    this.name = "ClarificationNeededError";
+    this.data = data;
+  }
+}
+
 export class CourseService {
   /**
    * ⚡ NEW: Redis-Based Pre-flight Check
@@ -23,78 +34,122 @@ export class CourseService {
       );
     }
   }
-  async generateCourse(userId: string, topic: string) {
+  /**
+   * ✅ FIXED: Pure Generation Logic
+   * Removed internal Ambiguity Check. The Controller/Worker is responsible for that.
+   * This prevents "ClarificationNeededError" from crashing background jobs.
+   */
+  // ✅ UPDATED SIGNATURE: Accepts options with userAnswers
+  async generateCourse(
+    userId: string,
+    topic: string,
+    options: { userAnswers?: any } = {},
+  ) {
     const COST = CREDIT_COSTS.CREATE_COURSE;
 
     // 1. Pre-flight Check
     await this.validateBalance(userId, COST);
-    // ✅ FETCH USER TO CHECK PLAN
+
     const user = await User.findById(userId);
     const isPro =
       user?.planType === "PRO" || user?.subscriptionStatus === "active";
-    // ✅ SELECT TIER BASED ON PLAN
     const planningTier = isPro
       ? TaskTier.LOGIC_REASONING
       : TaskTier.FAST_UTILITY;
 
     logger.info(
-      `👤 User ${userId} is ${isPro ? "PRO" : "FREE"}. Using Tier: ${planningTier}`,
+      `👤 User ${userId} is ${isPro ? "PRO" : "FREE"}. Tier: ${planningTier}`,
     );
 
     // 2. Check Cache
-    let syllabusData = await semanticCache.getCachedOutline(topic);
+    // We append answers to key to ensure "Python (Beginner)" is cached differently than "Python (Expert)"
+    const cacheKey = options.userAnswers
+      ? `${topic}-${JSON.stringify(options.userAnswers)}`
+      : topic;
+    let syllabusData = await semanticCache.getCachedOutline(cacheKey);
 
     if (syllabusData) {
-      logger.info(`⚡ [Cache Hit] Skipping Research & AI for: ${topic}`);
-      await new Promise((r) => setTimeout(r, 1500));
-    } else {
-      // 🛑 CACHE MISS: Do the expensive work
-      logger.info(`🐢 [Cache Miss] Starting fresh generation for: ${topic}`);
-
-      // A. Research
-      const webContext = await researchService.getTechnicalContext(topic);
-
-      // B. System Prompt (Moved from Controller)
-      const systemPrompt = `
-        You are an expert curriculum designer.
-        ${webContext ? `CRITICAL CONTEXT FROM WEB SEARCH:\n${webContext}\n` : ""}
-        Create a detailed course syllabus.
-        IMPORTANT: Output strictly valid JSON.
-        Structure the 'lessons' array as OBJECTS, not strings.
-
-        EXAMPLE OUTPUT FORMAT:
-        {
-          "title": "Course Name",
-          "description": "Brief summary...",
-          "tags": ["Tag1", "Tag2"],
-          "modules": [
-            {
-              "title": "Module 1",
-              "lessons": [
-                { "title": "Lesson 1.1" },
-                { "title": "Lesson 1.2" }
-              ]
-            }
-          ]
-        }
-      `;
-
-      // C. AI Generation
-      syllabusData = await modelGateway.generateStructured(
-        systemPrompt,
-        outlineSchema,
-        planningTier,
-      );
-
-      // D. Save to Cache (Background)
-      logger.info(`💾 Saving to cache...`);
-      await semanticCache
-        .setCachedOutline(topic, syllabusData)
-        .catch((err) => logger.error("Failed to set cache:", err));
+      logger.info(`⚡ [Cache Hit] Serving cached content for: ${topic}`);
+      return await this.createFromTemplate(userId, syllabusData);
     }
 
-    // 3. Persist to DB (Transaction)
+    logger.info(`🐢 [Cache Miss] Starting generation for: ${topic}`);
+
+    // ---------------------------------------------------------
+    // 🎯 PHASE 8.2: CONTEXT INJECTION
+    // ---------------------------------------------------------
+    let scopingContext = "";
+    if (options.userAnswers) {
+      // Format: "Experience: Beginner; Goal: Career Pivot"
+      scopingContext = Object.entries(options.userAnswers)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("; ");
+
+      // 🔍 LOG THIS to verify it's working
+      logger.info(`🎯 [Scoping] Applied User Context: "${scopingContext}"`);
+    }
+
+    // A. Research (Refined by Scope)
+    // If user said "Advanced", we search for "Topic (Advanced)"
+    const searchTopic = scopingContext ? `${topic} (${scopingContext})` : topic;
+    const webContext = await researchService.getTechnicalContext(searchTopic);
+
+    // B. System Prompt (Refined by Scope)
+    const systemPrompt = `
+      You are an expert curriculum designer.
+      
+      ${scopingContext ? `🔥 CRITICAL USER PREFERENCES:\n${scopingContext}\n(You MUST tailor the content to match these preferences strictly.)\n` : ""}
+      
+      ${webContext ? `WEB CONTEXT:\n${webContext}\n` : ""}
+      
+      Create a detailed course syllabus for: "${topic}".
+      IMPORTANT: Output strictly valid JSON.
+      Structure the 'lessons' array as OBJECTS.
+
+      EXAMPLE OUTPUT FORMAT:
+      {
+        "title": "Course Name",
+        "description": "Brief summary...",
+        "tags": ["Tag1", "Tag2"],
+        "modules": [
+          { "title": "Module 1", "lessons": [{ "title": "Lesson 1.1" }] }
+        ]
+      }
+    `;
+
+    // C. AI Generation
+    syllabusData = await modelGateway.generateStructured(
+      systemPrompt,
+      outlineSchema,
+      planningTier,
+    );
+
+    // D. Save to Cache
+    await semanticCache
+      .setCachedOutline(cacheKey, syllabusData)
+      .catch(() => {});
+
+    // 3. Persist to DB
     return await this.createFromTemplate(userId, syllabusData);
+  }
+
+  /**
+   * Resume Handler
+   * Still useful as a wrapper for the Controller to call
+   */
+  async resumeCourseGeneration(userId: string, jobId: string, answers: any) {
+    const stateRaw = await redisClient.get(jobId);
+    if (!stateRaw) throw new Error("Job expired");
+
+    const state = JSON.parse(stateRaw);
+    if (state.userId !== userId) throw new Error("Unauthorized");
+
+    await redisClient.del(jobId);
+
+    // Directly call generate, injecting the answers
+    return this.generateCourse(userId, state.topic, {
+      userAnswers: answers,
+    });
   }
 
   /**

@@ -8,6 +8,7 @@ import {
   deleteCourse,
   deleteModule,
   deleteLesson,
+  resumeCourse,
 } from "../controllers/courseController";
 import { get } from "node:http";
 
@@ -15,7 +16,7 @@ const router = Router();
 
 // 1. Generate the Outline (Course + Modules + Lesson Titles)
 router.post("/outline", generateCourseOutline);
-
+router.post("/resume", resumeCourse);
 // 2. Lazy Load / Generate specific lesson content
 router.post("/lessons/:lessonId/generate", generateLessonContent);
 

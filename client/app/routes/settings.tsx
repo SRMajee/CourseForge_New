@@ -20,22 +20,23 @@ import { api } from "~/services/api";
 import { toaster } from "~/components/ui/toaster";
 import { TopUpModal } from "~/features/payment/components/TopUpModal";
 import { FaCoins, FaInfoCircle, FaCheckCircle, FaCrown } from "react-icons/fa";
+import { ManageSubscriptionModal } from "~/features/subscription/components/ManageSubscriptionModal";
 
 // Match these to your Backend 'credits.ts'
 const COST_MENU = [
   {
     action: "Create Course Outline",
-    cost: 10,
+    cost: import.meta.env.VITE_COST_COURSE_CONTENT,
     desc: "Generates modules & lesson titles",
   },
   {
     action: "Generate Lesson Content",
-    cost: 5,
+    cost: import.meta.env.VITE_COST_LESSON_CONTENT,
     desc: "AI writes the full lesson text",
   },
   {
     action: "Generate Audio Summary",
-    cost: 15,
+    cost: import.meta.env.VITE_COST_AUDIO_GEN,
     desc: "High-quality Neural TTS audio",
   },
   { action: "Export PDF", cost: 5, desc: "Downloadable course document" },
@@ -48,7 +49,7 @@ export default function Settings() {
   const [name, setName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isTopUpOpen, setTopUpOpen] = useState(false);
-
+  const [isSubModalOpen, setSubModalOpen] = useState(false);
   useEffect(() => {
     if (dbUser?.name) setName(dbUser.name);
     else if (auth0User?.name) setName(auth0User.name);
@@ -210,6 +211,9 @@ export default function Settings() {
                   >
                     <FaCheckCircle /> You are already a PRO Member
                   </Button>
+                  <Button variant="ghost" onClick={() => setSubModalOpen(true)}>
+                    Manage Plan
+                  </Button>
                   <Button
                     w="full"
                     colorPalette="purple"
@@ -276,6 +280,10 @@ export default function Settings() {
         onClose={() => setTopUpOpen(false)}
         // @ts-ignore - You can add this prop to your Modal later to open correct tab
         initialTab={isPro ? "credits" : "plan"}
+      />
+      <ManageSubscriptionModal
+        isOpen={isSubModalOpen}
+        onClose={() => setSubModalOpen(false)}
       />
     </Box>
   );

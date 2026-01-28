@@ -2,23 +2,44 @@ import { HStack, Text, Icon, Button, Box } from "@chakra-ui/react";
 import { FaCoins, FaPlus } from "react-icons/fa";
 import { useAuthStore } from "~/store/authStore";
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { fireSuccessBurst } from "~/utils/confetti";
 
 export const CreditBalance = ({ onOpenTopUp }: { onOpenTopUp: () => void }) => {
   const { user } = useAuthStore();
   const [prevCredits, setPrevCredits] = useState(user?.credits || 0);
-  const [direction, setDirection] = useState(0); // 1 for gain, -1 for loss
 
-  // Track changes to trigger animation
+  // Controls the slide animation direction (1 = Up, -1 = Down)
+  const [direction, setDirection] = useState(0);
+
+  // Controls the text color ('green.500', 'red.500', or 'inherit')
+  const [highlightColor, setHighlightColor] = useState("inherit");
+
   useEffect(() => {
-    if (user?.credits !== undefined) {
-      if (user.credits > prevCredits) setDirection(1);
-      if (user.credits < prevCredits) setDirection(-1);
+    if (user?.credits !== undefined && user.credits !== prevCredits) {
+      const isGain = user.credits > prevCredits;
+
+      // 1. Set Direction for Animation
+      setDirection(isGain ? 1 : -1);
+
+      // 2. Set Flash Color
+      setHighlightColor(isGain ? "green.500" : "red.500");
+
+      // 3. Trigger Confetti for big wins
       if (user.credits > prevCredits + 50) {
         fireSuccessBurst();
       }
+
+      // 4. Update Previous Value
       setPrevCredits(user.credits);
+
+      // 5. Timer to reset color to white/inherit after 2 seconds
+      const timer = setTimeout(() => {
+        setHighlightColor("inherit"); // Reverts to default text color
+      }, 2000);
+
+      // Cleanup timer if credits change rapidly
+      return () => clearTimeout(timer);
     }
   }, [user?.credits, prevCredits]);
 
@@ -53,13 +74,10 @@ export const CreditBalance = ({ onOpenTopUp }: { onOpenTopUp: () => void }) => {
             >
               <Text
                 fontWeight="bold"
-                color={
-                  direction > 0
-                    ? "green.500"
-                    : direction < 0
-                      ? "red.500"
-                      : "inherit"
-                }
+                // Uses the state that resets after 2 seconds
+                color={highlightColor}
+                // Adds a smooth color transition
+                transition="color 0.5s ease"
               >
                 {user?.credits || 0}
               </Text>

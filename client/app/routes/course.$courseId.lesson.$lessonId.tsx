@@ -47,9 +47,10 @@ const LANGUAGES = [
 ];
 
 // 👇 Define Costs
-const COST_LESSON_CONTENT = 5;
-const COST_AUDIO_GEN = 15;
-const COST_REGENERATE = 2;
+const COST_LESSON_CONTENT = import.meta.env.VITE_COST_LESSON_CONTENT;
+const COST_AUDIO_GEN = import.meta.env.VITE_COST_AUDIO_GEN;
+const COST_REGENERATE = import.meta.env.VITE_COST_AUDIO_REGENERATE ;
+
 
 export default function LessonPage() {
   const { courseId, lessonId } = useParams();
