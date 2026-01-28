@@ -111,7 +111,7 @@ export class LessonService {
       structuredLesson = await modelGateway.generateStructured(
         `${systemPrompt}\n\nUSER REQUEST: ${userPrompt}`,
         lessonResponseSchema,
-        TaskTier.BULK_CONTENT,
+        TaskTier.LOGIC_REASONING,
       );
 
       // ---------------------------------------------------------

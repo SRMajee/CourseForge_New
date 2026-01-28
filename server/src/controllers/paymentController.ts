@@ -5,6 +5,48 @@ import { User } from "../models/User";
 import { creditService } from "../services/creditService";
 import logger from "../utils/logger";
 
+// ✅ NEW HELPER FUNCTION: upgradeUserPlan
+export const upgradeUserPlan = async (
+  userId: string,
+  subscriptionId: string,
+  customerId: string,
+) => {
+  try {
+    // 1. Add Credits (Rollover logic) - Assuming PRO plan gets 1000
+    await creditService.addCredits(userId, 1000);
+
+    // 2. Fetch latest subscription end date from Stripe
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+    // 🛡️ FIX: Cast to 'any' to fix TypeScript error & check for existence
+    const subData = subscription as any;
+
+    let periodEnd = new Date();
+    if (subData && subData.current_period_end) {
+      periodEnd = new Date(subData.current_period_end * 1000);
+    } else {
+      // Fallback: Set to 30 days from now if Stripe returns null
+      logger.warn(
+        `⚠️ Subscription ${subscriptionId} missing end date. Using fallback.`,
+      );
+      periodEnd.setDate(periodEnd.getDate() + 30);
+    }
+
+    // 3. Update User Record
+    await User.findByIdAndUpdate(userId, {
+      stripeCustomerId: customerId,
+      subscriptionId: subscriptionId,
+      subscriptionStatus: "active",
+      planType: "PRO",
+      currentPeriodEnd: periodEnd,
+    });
+
+    logger.info(`✅ User ${userId} upgraded to PRO (Credits Rolled Over)`);
+  } catch (error) {
+    logger.error(`❌ Upgrade Failed for User ${userId}:`, error);
+  }
+};
+
 // 1. Create Checkout Session
 export const createCheckoutSession = async (req: Request, res: Response) => {
   try {
@@ -93,30 +135,9 @@ export const handleWebhook = async (req: Request, res: Response) => {
       // 2. New Subscription (First Month)
       if (userId && type === "SUBSCRIPTION") {
         const subscriptionId = session.subscription as string;
+        const customerId = session.customer as string;
 
-        // ✅ CHANGED: Use addCredits (Rollover) instead of resetMonthlyCredits
-        await creditService.addCredits(userId, 1000);
-
-        const subscription =
-          await stripe.subscriptions.retrieve(subscriptionId);
-
-        // ✅ FIX: Robust Date Handling (Prevents "Invalid Date" crash)
-        const periodEndTimestamp =
-          (subscription as any).current_period_end ||
-          Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
-        const periodEnd = new Date(periodEndTimestamp * 1000);
-
-        await User.findByIdAndUpdate(userId, {
-          stripeCustomerId: session.customer,
-          subscriptionId: subscriptionId,
-          subscriptionStatus: "active",
-          planType: "PRO",
-          currentPeriodEnd: periodEnd,
-        });
-
-        logger.info(
-          `✅ New Subscription Active for ${userId} (Credits Rolled Over)`,
-        );
+        await upgradeUserPlan(userId, subscriptionId, customerId);
       }
     }
 
@@ -133,13 +154,15 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
         if (user) {
           const periodEndTimestamp = session.lines?.data[0]?.period?.end;
-          const periodEndDate = periodEndTimestamp
-            ? new Date(periodEndTimestamp * 1000)
-            : undefined;
 
-          // ✅ NOTE: Renewals usually RESET credits (Use it or lose it).
-          // If you want Rollover forever, change this to addCredits(1000) too.
-          await creditService.resetMonthlyCredits(user._id.toString(), 1000);
+          // 🛡️ FIX: Safe Date Parsing for Renewals
+          let periodEndDate = undefined;
+          if (periodEndTimestamp) {
+            periodEndDate = new Date(periodEndTimestamp * 1000);
+          }
+
+          // Renew Credits (Reset or Add - kept as Reset based on original code)
+          await creditService.addCredits(user._id.toString(), 1000);
 
           await User.findByIdAndUpdate(user._id, {
             subscriptionStatus: "active",

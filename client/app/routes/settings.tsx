@@ -18,8 +18,8 @@ import { useAuthStore } from "~/store/authStore";
 import { useState, useEffect } from "react";
 import { api } from "~/services/api";
 import { toaster } from "~/components/ui/toaster";
-import { TopUpModal } from "~/features/payment/components/TopUpModal"; // 👈 We will create this next
-import { FaCoins, FaInfoCircle, FaCheckCircle } from "react-icons/fa";
+import { TopUpModal } from "~/features/payment/components/TopUpModal";
+import { FaCoins, FaInfoCircle, FaCheckCircle, FaCrown } from "react-icons/fa";
 
 // Match these to your Backend 'credits.ts'
 const COST_MENU = [
@@ -56,9 +56,11 @@ export default function Settings() {
 
   const user = dbUser || auth0User;
 
-  // 👇 Dynamic Plan Logic
+  // 👇 Dynamic Plan Logic (Case-insensitive safety)
   const isPro =
-    dbUser?.planType === "PRO" || dbUser?.subscriptionStatus === "active";
+    dbUser?.planType?.toUpperCase() === "PRO" ||
+    dbUser?.subscriptionStatus === "active";
+
   const handleSave = async () => {
     if (!name.trim()) return;
     setIsSaving(true);
@@ -173,13 +175,15 @@ export default function Settings() {
             >
               <VStack align="start" gap={1}>
                 <HStack color={isPro ? "purple.600" : "blue.600"}>
-                  <FaCoins />
-                  <Text fontWeight="bold">Available Credits</Text>
+                  {isPro ? <FaCrown /> : <FaCoins />}
+                  <Text fontWeight="bold">
+                    {isPro ? "Pro Status Active" : "Available Credits"}
+                  </Text>
                 </HStack>
                 <Text fontSize="sm" color="fg.muted">
                   {isPro
-                    ? "Your monthly credits will reset on the billing date."
-                    : "Upgrade to Pro for 1000/mo/mo & GPT-4o Access."}
+                    ? "Your monthly credits (1000) reset on the billing date."
+                    : "Upgrade to Pro for 1000 credits/mo & GPT-4o Access."}
                 </Text>
               </VStack>
 
@@ -194,13 +198,38 @@ export default function Settings() {
             </HStack>
           </Card.Body>
           <Card.Footer>
-            <Button
-              w="full"
-              colorPalette={isPro ? "green" : "yellow"}
-              onClick={() => setTopUpOpen(true)}
-            >
-              <FaCoins /> {isPro ? "Buy Extra Credits" : "Upgrade to Pro"}
-            </Button>
+            <VStack w="full" gap={2}>
+              {/* ✅ SHOW THIS IF ALREADY PRO */}
+              {isPro ? (
+                <>
+                  <Button
+                    w="full"
+                    variant="surface"
+                    colorPalette="green"
+                    disabled
+                  >
+                    <FaCheckCircle /> You are already a PRO Member
+                  </Button>
+                  <Button
+                    w="full"
+                    colorPalette="purple"
+                    variant="outline"
+                    onClick={() => setTopUpOpen(true)}
+                  >
+                    <FaCoins /> Buy Extra Top-up Credits
+                  </Button>
+                </>
+              ) : (
+                /* ✅ SHOW THIS IF FREE */
+                <Button
+                  w="full"
+                  colorPalette="yellow"
+                  onClick={() => setTopUpOpen(true)}
+                >
+                  <FaCrown /> Upgrade to Pro
+                </Button>
+              )}
+            </VStack>
           </Card.Footer>
         </Card.Root>
 
@@ -242,7 +271,12 @@ export default function Settings() {
       </VStack>
 
       {/* 👇 The Payment Modal */}
-      <TopUpModal isOpen={isTopUpOpen} onClose={() => setTopUpOpen(false)} />
+      <TopUpModal
+        isOpen={isTopUpOpen}
+        onClose={() => setTopUpOpen(false)}
+        // @ts-ignore - You can add this prop to your Modal later to open correct tab
+        initialTab={isPro ? "credits" : "plan"}
+      />
     </Box>
   );
 }

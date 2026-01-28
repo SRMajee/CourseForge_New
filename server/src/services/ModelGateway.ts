@@ -7,14 +7,15 @@ import { traceable, getCurrentRunTree } from "langsmith/traceable";
 import { retryWithBackoff } from "../utils/retryHelper";
 // Define the Tiers based on your plan
 export enum TaskTier {
-  COMPLEX_PLANNING = "tier_1", // Pro: GPT-4o / DeepSeek (Smartest)
-  BASIC_PLANNING = "tier_1_basic", // Free: Llama 3 (Fastest/Cheapest)
-  BULK_CONTENT = "tier_2", // Bulk: Gemini / Llama
-  FAST_UTILITY = "tier_3", // Utility: Llama 3
+  LOGIC_REASONING = "tier_deepseek", // DeepSeek-V3 (Smartest + Cheap)
+  CREATIVE_WRITING = "tier_llama_70b", // Llama 3.3 70B (Best Prose)
+  FAST_UTILITY = "tier_llama_8b", // Llama 3.1 8B (Sub-second speed)
+  JSON_REPAIR = "tier_gemini", // Gemini 1.5 Flash (Free Repair)
 }
 
 export class ModelGateway {
   private openai: OpenAI;
+  private deepseek: OpenAI;
   private gemini: GoogleGenerativeAI;
   private groq: Groq;
 
@@ -23,7 +24,12 @@ export class ModelGateway {
     this.openai = wrapOpenAI(
       new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
     );
-
+    this.deepseek = wrapOpenAI(
+      new OpenAI({
+        baseURL: "https://api.deepseek.com",
+        apiKey: process.env.DEEPSEEK_API_KEY,
+      }),
+    );
     this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
     this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   }
@@ -38,7 +44,7 @@ export class ModelGateway {
   ): Promise<string> {
     try {
       switch (tier) {
-        case TaskTier.COMPLEX_PLANNING:
+        case TaskTier.LOGIC_REASONING:
           // console.log("🧠 [Tier 1 PRO] Using GPT-4o/DeepSeek...");
           // return this.callOpenAI(prompt, systemInstruction);
 
@@ -46,15 +52,17 @@ export class ModelGateway {
           // Gemini 1.5 Flash is smart enough to handle the syllabus for now.
           // console.log("⚠️ [Limit Reached] Redirecting Tier 1 to Gemini...");
           // return this.callGemini(prompt, systemInstruction);
-          console.log("⚡ [Tier 1 Strategy] Using Groq (Llama 3) for speed...");
-          return this.callGroq(prompt, systemInstruction);
-        case TaskTier.BASIC_PLANNING:
+          console.log("🧠 [Factory] Routing to DeepSeek-V3...");
+          return this.callDeepSeek(prompt, systemInstruction);
+        // console.log("⚡ [Tier 1 Strategy] Using Groq (Llama 3) for speed...");
+        // return this.callGroq(prompt, systemInstruction);
+        case TaskTier.CREATIVE_WRITING:
           console.log("⚡ [Tier 1 BASIC] Using Groq (Llama 3)...");
           return this.callGroq(prompt, systemInstruction);
-        case TaskTier.BULK_CONTENT:
+        case TaskTier.FAST_UTILITY:
           // return this.callGemini(prompt, systemInstruction);
           return this.callGroq(prompt, systemInstruction);
-        case TaskTier.FAST_UTILITY:
+        case TaskTier.JSON_REPAIR:
           return this.callGroq(prompt, systemInstruction);
         default:
           throw new Error("Invalid Task Tier");
@@ -62,14 +70,50 @@ export class ModelGateway {
     } catch (error) {
       console.error(`Error in ModelGateway [${tier}]:`, error);
       // Fallback Strategy: If Groq/Gemini fails, fall back to OpenAI (optional)
-      if (tier !== TaskTier.COMPLEX_PLANNING) {
+      if (tier !== TaskTier.LOGIC_REASONING) {
         console.warn("Falling back to OpenAI...");
         return this.callOpenAI(prompt, systemInstruction);
       }
       throw error;
     }
   }
+  private callDeepSeek = traceable(
+    async (prompt: string, system?: string) => {
+      const run = getCurrentRunTree();
+      return retryWithBackoff(async () => {
+        const response = await this.deepseek.chat.completions.create({
+          model: "deepseek-chat",
+          messages: [
+            {
+              role: "system",
+              content: system || "You are a helpful assistant.",
+            },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.3, // Low temp for logic
+        });
 
+        // Track Usage
+        const usage = response.usage;
+        if (run && usage) {
+          run.metadata = {
+            ...run.metadata,
+            token_usage: {
+              prompt_tokens: usage.prompt_tokens,
+              completion_tokens: usage.completion_tokens,
+              total_tokens: usage.total_tokens,
+            },
+          };
+        }
+        return response.choices[0].message.content || "";
+      });
+    },
+    {
+      name: "DeepSeek V3",
+      run_type: "llm",
+      metadata: { ls_provider: "deepseek", ls_model_name: "deepseek-chat" },
+    },
+  );
   // --- TIER 1: GPT-4o ---
   private async callOpenAI(prompt: string, system?: string): Promise<string> {
     return retryWithBackoff(async () => {
@@ -247,19 +291,19 @@ export class ModelGateway {
     async <S extends ZodTypeAny>(
       prompt: string,
       schema: S,
-      tier: TaskTier,
+      initialTier: TaskTier,
       maxRetries = 3,
     ): Promise<z.infer<S>> => {
       let currentPrompt = prompt;
       let attempts = 0;
-
+      let currentTier = initialTier;
       while (attempts <= maxRetries) {
         try {
           console.log(`🔄 [Attempt ${attempts + 1}] Generating structure...`);
 
           const rawResult = await this.generate(
             currentPrompt,
-            tier,
+            currentTier,
             "IMPORTANT: Output STRICT JSON only. Do not use Markdown code blocks. Do not add any conversational text.",
           );
 
@@ -292,7 +336,7 @@ export class ModelGateway {
           const errors = validation.error.issues
             .map((i) => `${i.path.join(".")}: ${i.message}`)
             .join("; ");
-
+          currentTier = TaskTier.JSON_REPAIR;
           currentPrompt = `PREVIOUS OUTPUT WAS INVALID.\nERROR: ${errors}\nORIGINAL REQUEST: ${prompt}\nACTION: Fix the JSON structure and return ONLY the JSON.`;
           attempts++;
         } catch (error: any) {

@@ -34,8 +34,8 @@ export class CourseService {
       user?.planType === "PRO" || user?.subscriptionStatus === "active";
     // ✅ SELECT TIER BASED ON PLAN
     const planningTier = isPro
-      ? TaskTier.COMPLEX_PLANNING
-      : TaskTier.BASIC_PLANNING;
+      ? TaskTier.LOGIC_REASONING
+      : TaskTier.FAST_UTILITY;
 
     logger.info(
       `👤 User ${userId} is ${isPro ? "PRO" : "FREE"}. Using Tier: ${planningTier}`,

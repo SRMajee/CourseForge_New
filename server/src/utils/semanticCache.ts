@@ -1,19 +1,32 @@
 import { redisClient } from "../config/redis";
-import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
+import { GoogleGenerativeAI } from "@google/generative-ai"; // ✅ Switch to direct SDK
 import { env } from "../config/env";
 import logger from "./logger";
 
 const CACHE_TTL = 60 * 60 * 24 * 30; // 30 Days
-const SIMILARITY_THRESHOLD = 0.90; // 92% similarity required to be considered a "Hit"
+const SIMILARITY_THRESHOLD = 0.9; // 92% similarity required to be considered a "Hit"
 
 export class SemanticCache {
-  private embeddings: GoogleGenerativeAIEmbeddings;
+  private genAI: GoogleGenerativeAI;
+  private model: any;
 
   constructor() {
-    this.embeddings = new GoogleGenerativeAIEmbeddings({
-      model: "text-embedding-004",
-      apiKey: env.GEMINI_API_KEY,
-    });
+    this.genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY as string);
+    // ✅ FIX: Use 'embedding-001' (Stable) instead of 'text-embedding-004' (Unstable/404)
+    this.model = this.genAI.getGenerativeModel({ model: "embedding-001" });
+  }
+
+  // --- 1. EMBEDDING GENERATOR (Robust Helper) ---
+  private async getEmbedding(text: string): Promise<number[] | null> {
+    try {
+      // logger.info(`🔍 [Semantic] Generating embedding for: "${text.substring(0, 20)}..."`);
+      const result = await this.model.embedContent(text);
+      return result.embedding.values;
+    } catch (error: any) {
+      // Log error but don't crash the entire flow
+      logger.error(`❌ [Semantic Read Error] ${error.message}`);
+      return null;
+    }
   }
 
   // --- MATH HELPER: Cosine Similarity ---
@@ -24,18 +37,18 @@ export class SemanticCache {
     return dotProduct / (magnitudeA * magnitudeB);
   }
 
-  // --- 1. COURSE OUTLINES (Semantic) ---
+  // --- 2. COURSE OUTLINES (Semantic) ---
   async getCachedOutline(topic: string): Promise<any | null> {
     try {
-      logger.info(`🔍 [Semantic] Generating embedding for: "${topic}"...`);
-      const queryEmbedding = await this.embeddings.embedQuery(topic);
+      const queryEmbedding = await this.getEmbedding(topic);
+      if (!queryEmbedding) return null; // Skip if embedding failed
 
       // 1. Get list of all cached outlines from our index
       const keys = await redisClient.smembers("course_index");
 
       let bestMatch = { key: "", score: -1 };
 
-      // 2. Linear Scan (Acceptable for <1000 items. For production, use Redis Stack)
+      // 2. Linear Scan
       for (const key of keys) {
         // Fetch the metadata (which contains the vector)
         const metaStr = await redisClient.get(`meta:${key}`);
@@ -74,7 +87,10 @@ export class SemanticCache {
   async setCachedOutline(topic: string, data: any) {
     try {
       // 1. Generate Embedding
-      const embedding = await this.embeddings.embedQuery(topic);
+      const embedding = await this.getEmbedding(topic);
+
+      // If embedding failed, don't cache (otherwise we pollute cache with bad data)
+      if (!embedding) return;
 
       // 2. Create a clean key
       const key = topic
@@ -101,7 +117,7 @@ export class SemanticCache {
     }
   }
 
-  // --- 2. LESSON CONTENT (Exact Match is safer for lessons) ---
+  // --- 3. LESSON CONTENT (Exact Match is safer for lessons) ---
   async getCachedLesson(
     courseTitle: string,
     lessonTitle: string,

@@ -5,7 +5,6 @@ import {
   Text,
   HStack,
   Card,
-  Badge,
   Icon,
   Box,
   Separator,
@@ -13,28 +12,32 @@ import {
 } from "@chakra-ui/react";
 import { useState } from "react";
 import { FaCoins, FaCrown, FaCheck } from "react-icons/fa";
-import { api } from "~/services/api"; // Your Axios instance
+import { api } from "~/services/api";
 import { toaster } from "~/components/ui/toaster";
+import { useAuthStore } from "~/store/authStore"; // 👈 Import Store
 
 interface TopUpModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: string; // Optional prop if you want to support tabs later
 }
 
 export const TopUpModal = ({ isOpen, onClose }: TopUpModalProps) => {
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const { user } = useAuthStore(); // 👈 Get User
 
-  // Match these IDs with your Backend 'stripe.ts' config
+  // Check Pro Status
+  const isPro =
+    user?.planType === "PRO" || user?.subscriptionStatus === "active";
+
   const handleCheckout = async (packId: string, planId?: string) => {
     setLoadingId(packId || planId || "loading");
     try {
-      // Call Backend to get Stripe URL
       const { data } = await api.post("/payment/checkout", {
         packId,
         planId,
       });
 
-      // Redirect to Stripe
       if (data.url) {
         window.location.href = data.url;
       }
@@ -51,88 +54,95 @@ export const TopUpModal = ({ isOpen, onClose }: TopUpModalProps) => {
       <Dialog.Positioner>
         <Dialog.Content>
           <Dialog.Header>
-            <Dialog.Title>Recharge & Upgrade</Dialog.Title>
+            <Dialog.Title>
+              {isPro ? "Top Up Credits" : "Recharge & Upgrade"}
+            </Dialog.Title>
           </Dialog.Header>
           <Dialog.Body pb={6}>
             <VStack gap={6} align="stretch">
-              {/* --- OPTION 1: PRO SUBSCRIPTION --- */}
-              <Card.Root
-                variant="elevated"
-                borderColor="purple.400"
-                borderWidth="2px"
-                overflow="hidden"
-              >
-                <Box
-                  bg="purple.600"
-                  color="white"
-                  px={4}
-                  py={1}
-                  fontSize="xs"
-                  fontWeight="bold"
-                  textAlign="center"
+              {/* --- OPTION 1: PRO SUBSCRIPTION (Hidden if already PRO) --- */}
+              {!isPro && (
+                <Card.Root
+                  variant="elevated"
+                  borderColor="purple.400"
+                  borderWidth="2px"
+                  overflow="hidden"
                 >
-                  BEST VALUE • RECURRING
-                </Box>
-                <Card.Body p={5}>
-                  <HStack justify="space-between" align="start" mb={4}>
-                    <VStack align="start" gap={1}>
-                      <HStack>
-                        <Icon color="purple.500" fontSize="xl">
-                          <FaCrown />
-                        </Icon>
-                        <Heading size="md">Pro Monthly</Heading>
-                      </HStack>
-                      <Text fontSize="sm" color="fg.muted">
-                        For serious learners
-                      </Text>
-                    </VStack>
-                    <VStack align="end" gap={0}>
-                      <Heading size="lg">$12</Heading>
-                      <Text fontSize="xs" color="fg.muted">
-                        / month
-                      </Text>
-                    </VStack>
-                  </HStack>
-
-                  <VStack align="start" gap={2} mb={6}>
-                    <HStack>
-                      <Icon color="green.500">
-                        <FaCheck />
-                      </Icon>
-                      <Text fontSize="sm">1,000 Credits / mo</Text>
-                    </HStack>
-                    <HStack>
-                      <Icon color="green.500">
-                        <FaCheck />
-                      </Icon>
-                      <Text fontSize="sm">Access to Deep Research</Text>
-                    </HStack>
-                    <HStack>
-                      <Icon color="green.500">
-                        <FaCheck />
-                      </Icon>
-                      <Text fontSize="sm">Priority Generation</Text>
-                    </HStack>
-                  </VStack>
-
-                  <Button
-                    w="full"
-                    colorPalette="purple"
-                    onClick={() => handleCheckout("", "pro_monthly")}
-                    loading={loadingId === "pro_monthly"}
+                  <Box
+                    bg="purple.600"
+                    color="white"
+                    px={4}
+                    py={1}
+                    fontSize="xs"
+                    fontWeight="bold"
+                    textAlign="center"
                   >
-                    Upgrade to Pro
-                  </Button>
-                </Card.Body>
-              </Card.Root>
+                    BEST VALUE • RECURRING
+                  </Box>
+                  <Card.Body p={5}>
+                    <HStack justify="space-between" align="start" mb={4}>
+                      <VStack align="start" gap={1}>
+                        <HStack>
+                          <Icon color="purple.500" fontSize="xl">
+                            <FaCrown />
+                          </Icon>
+                          <Heading size="md">Pro Monthly</Heading>
+                        </HStack>
+                        <Text fontSize="sm" color="fg.muted">
+                          For serious learners
+                        </Text>
+                      </VStack>
+                      <VStack align="end" gap={0}>
+                        <Heading size="lg">$12</Heading>
+                        <Text fontSize="xs" color="fg.muted">
+                          / month
+                        </Text>
+                      </VStack>
+                    </HStack>
 
-              <HStack>
-                <Separator flex="1" />
-                <Text fontSize="xs" color="fg.muted" fontWeight="bold">
-                  OR ONE-TIME TOP UP
-                </Text>
-                <Separator flex="1" />
-              </HStack>
+                    <VStack align="start" gap={2} mb={6}>
+                      <HStack>
+                        <Icon color="green.500">
+                          <FaCheck />
+                        </Icon>
+                        <Text fontSize="sm">1,000 Credits / mo</Text>
+                      </HStack>
+                      <HStack>
+                        <Icon color="green.500">
+                          <FaCheck />
+                        </Icon>
+                        <Text fontSize="sm">Access to Deep Research</Text>
+                      </HStack>
+                      <HStack>
+                        <Icon color="green.500">
+                          <FaCheck />
+                        </Icon>
+                        <Text fontSize="sm">Priority Generation</Text>
+                      </HStack>
+                    </VStack>
+
+                    <Button
+                      w="full"
+                      colorPalette="purple"
+                      onClick={() => handleCheckout("", "pro_monthly")}
+                      loading={loadingId === "pro_monthly"}
+                    >
+                      Upgrade to Pro
+                    </Button>
+                  </Card.Body>
+                </Card.Root>
+              )}
+
+              {/* Separator only needed if Pro option exists */}
+              {!isPro && (
+                <HStack>
+                  <Separator flex="1" />
+                  <Text fontSize="xs" color="fg.muted" fontWeight="bold">
+                    OR ONE-TIME TOP UP
+                  </Text>
+                  <Separator flex="1" />
+                </HStack>
+              )}
 
               {/* --- OPTION 2: ONE-TIME PACK --- */}
               <Card.Root variant="outline">

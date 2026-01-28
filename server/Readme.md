@@ -3,7 +3,8 @@ docker-compose -f docker-compose.dev.yml up -d
 docker-compose -f docker-compose.dev.yml config --services
 docker-compose -f docker-compose.dev.yml logs -f api
 
-
+stripe login
+stripe listen --forward-to localhost:8080/api/v1/payment/webhook
 This is a smart approach. Building in distinct phases reduces cognitive load and prevents "spaghetti code."
 
 Here is the recommended **Phase Roadmap** for building the "Text-to-Learn" backend, structured by logical dependencies.
