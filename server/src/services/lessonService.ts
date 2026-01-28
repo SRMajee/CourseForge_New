@@ -15,6 +15,7 @@ import { lessonResponseSchema } from "../ai/parsers/courseSchema";
 import { semanticCache } from "../utils/semanticCache";
 import { youtubeService } from "./youtubeService";
 import { retryWithBackoff } from "../utils/retryHelper";
+import { codeExecutionService } from "./CodeExecutionService";
 export class LessonService {
   /**
    * ✅ VALIDATION HELPER
@@ -157,7 +158,10 @@ export class LessonService {
                 };
               }
             }
-
+            if (block.type === "code") {
+              // This will execute python code, fix errors, and return verified code
+              return await codeExecutionService.verifyCodeBlock(block);
+            }
             // ✅ FIX 3: Sanitize AI-Hallucinated Broken Links
             // If the AI generated a link with "undefined" in the URL, fix it.
             if (block.type === "link") {

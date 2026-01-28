@@ -52,10 +52,10 @@ export class ModelGateway {
           // Gemini 1.5 Flash is smart enough to handle the syllabus for now.
           // console.log("⚠️ [Limit Reached] Redirecting Tier 1 to Gemini...");
           // return this.callGemini(prompt, systemInstruction);
-          console.log("🧠 [Factory] Routing to DeepSeek-V3...");
-          return this.callDeepSeek(prompt, systemInstruction);
-        // console.log("⚡ [Tier 1 Strategy] Using Groq (Llama 3) for speed...");
-        // return this.callGroq(prompt, systemInstruction);
+          // console.log("🧠 [Factory] Routing to DeepSeek-V3...");
+          // return this.callDeepSeek(prompt, systemInstruction);
+          console.log("⚡ [Tier 1 Strategy] Using Groq (Llama 3) for speed...");
+          return this.callGroq(prompt, systemInstruction);
         case TaskTier.CREATIVE_WRITING:
           console.log("⚡ [Tier 1 BASIC] Using Groq (Llama 3)...");
           return this.callGroq(prompt, systemInstruction);
