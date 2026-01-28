@@ -1,0 +1,48 @@
+import { api } from "~/services/api";
+import type { Course } from "~/types/course";
+
+// 1. Generate a New Course Outline
+export const generateCourse = async (topic: string): Promise<Course> => {
+  const { data } = await api.post<Course>("/courses/outline", { topic });
+  return data;
+};
+
+// 2. Get Single Course by ID
+export const getCourseById = async (id: string): Promise<Course> => {
+  const { data } = await api.get<Course>(`/courses/${id}`);
+  return data;
+};
+
+// 3. Get All Courses
+export const getAllCourses = async (): Promise<Course[]> => {
+  try {
+    const { data } = await api.get<Course[]>("/courses");
+    return data;
+  } catch (err) {
+    console.warn("Fetch courses failed (Route might be missing)", err);
+    return [];
+  }
+};
+
+export const deleteCourse = async (courseId: string) => {
+  const { data } = await api.delete(`/courses/${courseId}`);
+  return data;
+};
+
+export const deleteModule = async (moduleId: string) => {
+  const { data } = await api.delete(`/courses/modules/${moduleId}`);
+  return data;
+};
+
+export const deleteLesson = async (lessonId: string) => {
+  const { data } = await api.delete(`/courses/lessons/${lessonId}`);
+  return data;
+};
+export class CourseService {
+  static generateCourse = generateCourse;
+  static getCourseById = getCourseById;
+  static getAllCourses = getAllCourses;
+  static deleteCourse = deleteCourse;
+  static deleteModule = deleteModule;
+  static deleteLesson = deleteLesson;
+}

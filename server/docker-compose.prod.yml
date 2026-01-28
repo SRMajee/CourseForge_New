@@ -1,0 +1,29 @@
+services:
+  # -----------------------------
+  # Node.js Backend (Production)
+  # -----------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner # Uses the final optimized stage
+    container_name: text_to_learn_api_prod
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - NODE_ENV=production
+      # In Prod, these should be injected via AWS Secrets Manager or Render Environment Variables
+      - MONGO_URI=${MONGO_URI_ATLAS}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AUTH0_ISSUER_BASE_URL=${AUTH0_ISSUER_BASE_URL}
+      - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
+    # No volumes mapped for code security and immutability
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+# No Mongo Service - We use Atlas in Prod
