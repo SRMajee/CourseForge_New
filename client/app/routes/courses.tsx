@@ -9,23 +9,38 @@ import {
   HStack,
   Icon,
   Button,
+  IconButton,
 } from "@chakra-ui/react";
 import { useState } from "react";
 import { useCourses } from "~/features/course/hooks/useCourses";
 import { CourseCard } from "~/features/course/components/CourseCard";
-import { FaSearch } from "react-icons/fa";
+import { FaSearch, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import { CreateCourseModal } from "~/features/course/components/CreateCourseModal";
 
 export default function MyCourses() {
-  const { data: courses, isLoading } = useCourses();
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [isModalOpen, setModalOpen] = useState(false); // <--- State for Modal
+  const [isModalOpen, setModalOpen] = useState(false);
+
+  // ✅ Pass page & limit to hook
+  // Ensure your useCourses hook is updated to accept these args!
+  const { data: response, isLoading } = useCourses(page, 9);
+
+  // ✅ Handle new response structure { data: [], meta: {} }
+  const courses = response?.data || [];
+  const meta = response?.meta || {
+    totalPages: 1,
+    hasNextPage: false,
+    hasPrevPage: false,
+  };
 
   // Filter logic (Client-side for now)
   const filteredCourses = courses?.filter(
     (c: { title: string; tags: any[] }) =>
       c.title.toLowerCase().includes(search.toLowerCase()) ||
-      c.tags.some((t) => t.toLowerCase().includes(search.toLowerCase())),
+      c.tags.some((t: string) =>
+        t.toLowerCase().includes(search.toLowerCase()),
+      ),
   );
 
   if (isLoading) {
@@ -44,7 +59,7 @@ export default function MyCourses() {
         {/* Search Bar */}
         <Box w={{ base: "full", md: "320px" }} position="relative">
           <Input
-            placeholder="Search courses..."
+            placeholder="Search visible courses..."
             pl={10}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -72,7 +87,7 @@ export default function MyCourses() {
           borderRadius="lg"
         >
           <Text color="fg.muted" fontSize="lg">
-            No courses found.
+            No courses found on this page.
           </Text>
           <Text fontSize="sm" color="fg.muted">
             Try adjusting your search or generate a new course.
@@ -84,11 +99,40 @@ export default function MyCourses() {
           </Button>
         </Center>
       ) : (
-        <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={6}>
-          {filteredCourses.map((course: any) => (
-            <CourseCard key={course._id} course={course} />
-          ))}
-        </SimpleGrid>
+        <Box>
+          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={6}>
+            {filteredCourses.map((course: any) => (
+              <CourseCard key={course._id} course={course} />
+            ))}
+          </SimpleGrid>
+
+          {/* ✅ Pagination Controls */}
+          {meta.totalPages > 1 && (
+            <HStack justify="center" gap={4} py={8}>
+              <IconButton
+                aria-label="Previous Page"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={!meta.hasPrevPage}
+                variant="outline"
+              >
+                <FaChevronLeft />
+              </IconButton>
+
+              <Text fontWeight="bold" color="fg.muted">
+                Page {meta.page} of {meta.totalPages}
+              </Text>
+
+              <IconButton
+                aria-label="Next Page"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={!meta.hasNextPage}
+                variant="outline"
+              >
+                <FaChevronRight />
+              </IconButton>
+            </HStack>
+          )}
+        </Box>
       )}
 
       {/* The Modal Component */}

@@ -53,7 +53,16 @@ export const ClarificationForm = ({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs, currentStep]);
-
+  useEffect(() => {
+    if (isComplete && !isLoading) {
+      // Go back to the last question so the user isn't stuck on the spinner
+      setCurrentStep(questions.length - 1);
+      addLog(
+        "❌ Error: Transmission failed or rejected. Please retry.",
+        "info",
+      );
+    }
+  }, [isLoading, isComplete, questions.length]);
   const addLog = (message: string, type: "info" | "user" = "info") => {
     const prefix = type === "user" ? "root@user:~$" : ">";
     setLogs((prev) => [...prev, `${prefix} ${message}`]);

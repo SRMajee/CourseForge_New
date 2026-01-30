@@ -15,6 +15,7 @@ import {
 } from "@chakra-ui/react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useAuthStore } from "~/store/authStore";
+import { useConfigStore } from "~/store/configStore"; // 👈 Import Config Store
 import { useState, useEffect } from "react";
 import { api } from "~/services/api";
 import { toaster } from "~/components/ui/toaster";
@@ -22,34 +23,16 @@ import { TopUpModal } from "~/features/payment/components/TopUpModal";
 import { FaCoins, FaInfoCircle, FaCheckCircle, FaCrown } from "react-icons/fa";
 import { ManageSubscriptionModal } from "~/features/subscription/components/ManageSubscriptionModal";
 
-// Match these to your Backend 'credits.ts'
-const COST_MENU = [
-  {
-    action: "Create Course Outline",
-    cost: import.meta.env.VITE_COST_COURSE_CONTENT,
-    desc: "Generates modules & lesson titles",
-  },
-  {
-    action: "Generate Lesson Content",
-    cost: import.meta.env.VITE_COST_LESSON_CONTENT,
-    desc: "AI writes the full lesson text",
-  },
-  {
-    action: "Generate Audio Summary",
-    cost: import.meta.env.VITE_COST_AUDIO_GEN,
-    desc: "High-quality Neural TTS audio",
-  },
-  { action: "Export PDF", cost: 5, desc: "Downloadable course document" },
-];
-
 export default function Settings() {
   const { user: auth0User, isLoading: isAuthLoading } = useAuth0();
   const { user: dbUser, setUser } = useAuthStore();
+  const { config, isLoading: isConfigLoading } = useConfigStore(); // 👈 Use Config
 
   const [name, setName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isTopUpOpen, setTopUpOpen] = useState(false);
   const [isSubModalOpen, setSubModalOpen] = useState(false);
+
   useEffect(() => {
     if (dbUser?.name) setName(dbUser.name);
     else if (auth0User?.name) setName(auth0User.name);
@@ -61,6 +44,30 @@ export default function Settings() {
   const isPro =
     dbUser?.planType?.toUpperCase() === "PRO" ||
     dbUser?.subscriptionStatus === "active";
+
+  // 👇 Generate COST_MENU dynamically from Store
+  const COST_MENU = [
+    {
+      action: "Create Course Outline",
+      cost: config?.costs.createCourse || "...",
+      desc: "Generates modules & lesson titles",
+    },
+    {
+      action: "Generate Lesson Content",
+      cost: config?.costs.generateLesson || "...",
+      desc: "AI writes the full lesson text",
+    },
+    {
+      action: "Generate Audio Summary",
+      cost: config?.costs.generateAudio || "...",
+      desc: "High-quality Neural TTS audio",
+    },
+    {
+      action: "Export PDF",
+      cost: config?.costs.exportPdf || "...",
+      desc: "Downloadable course document",
+    },
+  ];
 
   const handleSave = async () => {
     if (!name.trim()) return;
@@ -84,7 +91,7 @@ export default function Settings() {
     }
   };
 
-  if (isAuthLoading) {
+  if (isAuthLoading || isConfigLoading) {
     return (
       <Box p={10}>
         <Spinner size="xl" />
@@ -183,8 +190,8 @@ export default function Settings() {
                 </HStack>
                 <Text fontSize="sm" color="fg.muted">
                   {isPro
-                    ? "Your monthly credits (1000) reset on the billing date."
-                    : "Upgrade to Pro for 1000 credits/mo & GPT-4o Access."}
+                    ? `Your monthly credits (${config?.pricing.pro.credits || 1000}) reset on the billing date.`
+                    : `Upgrade to Pro for ${config?.pricing.pro.credits || 1000} credits/mo & GPT-4 Access.`}
                 </Text>
               </VStack>
 
@@ -237,7 +244,7 @@ export default function Settings() {
           </Card.Footer>
         </Card.Root>
 
-        {/* --- COST TABLE --- */}
+        {/* --- COST TABLE (Now powered by Backend Config) --- */}
         <Card.Root variant="outline">
           <Card.Header>
             <HStack gap={2}>
@@ -274,11 +281,9 @@ export default function Settings() {
         </Card.Root>
       </VStack>
 
-      {/* 👇 The Payment Modal */}
       <TopUpModal
         isOpen={isTopUpOpen}
         onClose={() => setTopUpOpen(false)}
-        // @ts-ignore - You can add this prop to your Modal later to open correct tab
         initialTab={isPro ? "credits" : "plan"}
       />
       <ManageSubscriptionModal

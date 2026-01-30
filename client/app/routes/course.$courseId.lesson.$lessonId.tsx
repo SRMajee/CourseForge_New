@@ -34,6 +34,7 @@ import { LessonContentRenderer } from "~/features/lesson/components/LessonConten
 import { LessonPDFExporter } from "~/features/lesson/components/LessonPDFExporter";
 import { useAuthStore } from "~/store/authStore"; // 👈 Import Auth Store
 import { toaster } from "~/components/ui/toaster"; // 👈 Import Toaster
+import { useConfigStore } from "~/store/configStore";
 
 // Language Options
 const LANGUAGES = [
@@ -47,12 +48,15 @@ const LANGUAGES = [
 ];
 
 // 👇 Define Costs
-const COST_LESSON_CONTENT = import.meta.env.VITE_COST_LESSON_CONTENT;
-const COST_AUDIO_GEN = import.meta.env.VITE_COST_AUDIO_GEN;
-const COST_REGENERATE = import.meta.env.VITE_COST_AUDIO_REGENERATE ;
-
 
 export default function LessonPage() {
+  const getCost = useConfigStore((state) => state.getCost);
+
+  // Dynamic Cost!
+  const COST_LESSON_CONTENT = getCost("generateLesson");
+  const COST_AUDIO_GEN = getCost("generateAudio");
+  const COST_REGENERATE = getCost("regenerate");
+
   const { courseId, lessonId } = useParams();
   const navigate = useNavigate();
 

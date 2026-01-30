@@ -14,14 +14,10 @@ export const getCourseById = async (id: string): Promise<Course> => {
 };
 
 // 3. Get All Courses
-export const getAllCourses = async (): Promise<Course[]> => {
-  try {
-    const { data } = await api.get<Course[]>("/courses");
-    return data;
-  } catch (err) {
-    console.warn("Fetch courses failed (Route might be missing)", err);
-    return [];
-  }
+// ✅ Update to accept page & limit (defaults match backend)
+export const getAllCourses = async (page = 1, limit = 9) => {
+  const { data } = await api.get(`/courses?page=${page}&limit=${limit}`);
+  return data; // Returns { data: [...], meta: {...} }
 };
 
 export const deleteCourse = async (courseId: string) => {

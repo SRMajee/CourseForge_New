@@ -6,7 +6,11 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import {
   isRouteErrorResponse,
@@ -18,13 +22,14 @@ import {
   useRouteError,
 } from "react-router";
 import { system } from "./theme";
-import { Toaster } from "~/components/ui/toaster";
 import { Auth0Provider } from "@auth0/auth0-react";
 import { AuthSync } from "./components/auth/AuthSync";
 import AxiosInterceptor from "./components/auth/AxiosInterceptor";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "./store/authStore"; // 👈 Import Auth Store
 import { useSocketStore } from "./store/socketStore"; // 👈 Import Socket Store
+import { useConfigStore } from "./store/configStore";
+import { Toaster, toaster } from "~/components/ui/toaster"; // 👈 Import toaster
 
 // 👇 NEW: Component to handle Socket Connection
 const SocketClient = () => {
@@ -43,8 +48,37 @@ const SocketClient = () => {
 };
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        mutationCache: new MutationCache({
+          onError: (error: any) => {
+            // 🛑 STOP: If this is a Clarification (422), do NOT show a global toast.
+            // The local component (CreateCourseModal) will handle it.
+            if (
+              error.response?.status === 422 ||
+              error.isClarification ||
+              error.response?.data?.code === "CLARIFICATION_NEEDED"
+            ) {
+              return;
+            }
 
+            // For other real errors (500, Network), show the toaster here
+            toaster.create({
+              title: "Error",
+              description:
+                error.response?.data?.message || "An unexpected error occurred",
+              type: "error",
+            });
+          },
+        }),
+      }),
+  );
+  const fetchConfig = useConfigStore((state) => state.fetchConfig);
+
+  useEffect(() => {
+    fetchConfig();
+  }, []);
   const domain = import.meta.env.VITE_AUTH0_DOMAIN;
   const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
   const audience = import.meta.env.VITE_AUTH0_AUDIENCE;

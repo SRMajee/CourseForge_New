@@ -7,6 +7,7 @@ import { attachUser } from "../middleware/attachUser";
 import paymentRoutes from "./paymentRoutes";
 import { modelGateway } from "../services/ModelGateway";
 import { trackSignal } from "../controllers/AnalyticsController";
+import { getAppConfig } from "../controllers/configController";
 import subscriptionRoutes from "./subscriptionRoutes";
 const router = Router();
 console.log("✅ LOADED: Main Router (routes/index.ts)"); // 👈 Add this
@@ -27,4 +28,5 @@ router.post("/test-router", async (req, res) => {
 });
 router.post("/analytics/signal", trackSignal);
 router.use("/subscription", checkJwt, attachUser, subscriptionRoutes);
+router.get("/config", getAppConfig);
 export default router;

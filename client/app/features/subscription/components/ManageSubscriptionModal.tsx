@@ -20,10 +20,12 @@ import {
   FaExclamationTriangle,
   FaCheckCircle,
   FaExternalLinkAlt,
+  FaRedo,
 } from "react-icons/fa";
 import { toaster } from "~/components/ui/toaster";
 import { api } from "~/services/api";
 import { useAuthStore } from "~/store/authStore";
+import { useConfigStore } from "~/store/configStore"; // 👈 Import Config Store
 
 interface ManageSubscriptionModalProps {
   isOpen: boolean;
@@ -32,7 +34,7 @@ interface ManageSubscriptionModalProps {
 
 interface SubscriptionDetails {
   status: string;
-  currentPeriodEnd: number; // Unix timestamp
+  currentPeriodEnd: number;
   planName: string;
   cardLast4: string;
   cancelAtPeriodEnd: boolean;
@@ -42,7 +44,8 @@ export const ManageSubscriptionModal = ({
   isOpen,
   onClose,
 }: ManageSubscriptionModalProps) => {
-  const { user, setUser } = useAuthStore();
+  const { user } = useAuthStore();
+  const { config, isLoading: isConfigLoading } = useConfigStore(); // 👈 Get Config
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [step, setStep] = useState<"details" | "confirm">("details");
@@ -53,76 +56,90 @@ export const ManageSubscriptionModal = ({
   const isPro =
     user?.planType === "PRO" || user?.subscriptionStatus === "active";
 
-  // 1. Fetch Subscription Details on Open
   useEffect(() => {
     if (isOpen && isPro) {
       fetchSubscriptionDetails();
+      setStep("details"); // Reset step when opening
     }
   }, [isOpen, isPro]);
 
   const fetchSubscriptionDetails = async () => {
     setIsFetching(true);
     try {
-      // Expecting backend to return: { status, currentPeriodEnd, cardLast4, ... }
       const { data } = await api.get("/subscription/current");
       setSubDetails(data);
     } catch (error) {
       console.error("Failed to load subscription details", error);
+      toaster.create({
+        title: "Could not load subscription",
+        description: "Please check your internet connection.",
+        type: "error",
+      });
     } finally {
       setIsFetching(false);
     }
   };
 
-  // 2. Handle "Update Card" -> Redirect to Stripe Portal
   const handleUpdatePaymentMethod = async () => {
     setIsLoading(true);
     try {
       const { data } = await api.post("/subscription/portal");
       if (data.url) {
-        window.location.href = data.url; // Redirect to Stripe
+        window.location.href = data.url;
       } else {
         throw new Error("No portal URL returned");
       }
     } catch (error) {
       toaster.create({
         title: "Failed to open billing portal",
+        description: "Ensure Customer Portal is enabled in Stripe Dashboard.",
         type: "error",
       });
       setIsLoading(false);
     }
   };
 
-  // 3. Handle Cancellation
   const handleCancelSubscription = async () => {
     setIsLoading(true);
     try {
       await api.post("/subscription/cancel");
-
       toaster.create({
         title: "Subscription Cancelled",
         description:
-          "Your plan will remain active until the end of the billing cycle.",
+          "Your plan will remain active until the billing cycle ends.",
         type: "success",
       });
-
       // Optimistic Update
-      if (user) {
-        setUser({ ...user, subscriptionStatus: "canceled" });
-      }
-      if (subDetails) {
-        setSubDetails({ ...subDetails, cancelAtPeriodEnd: true });
-      }
+      if (subDetails) setSubDetails({ ...subDetails, cancelAtPeriodEnd: true });
       onClose();
     } catch (error) {
-      console.error(error);
       toaster.create({ title: "Cancellation failed", type: "error" });
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleResumeSubscription = async () => {
+    setIsLoading(true);
+    try {
+      await api.post("/subscription/resume");
+      toaster.create({
+        title: "Subscription Resumed",
+        description: "Your plan will now renew automatically.",
+        type: "success",
+      });
+      // Optimistic Update
+      if (subDetails)
+        setSubDetails({ ...subDetails, cancelAtPeriodEnd: false });
+    } catch (error) {
+      toaster.create({ title: "Resume failed", type: "error" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const getFormattedDate = (timestamp?: number) => {
-    if (!timestamp) return "Loading...";
+    if (!timestamp) return "Unknown Date";
     return new Date(timestamp * 1000).toLocaleDateString(undefined, {
       year: "numeric",
       month: "long",
@@ -131,15 +148,12 @@ export const ManageSubscriptionModal = ({
   };
 
   const renderContent = () => {
+    // 1. Not Pro
     if (!isPro) {
       return (
         <VStack py={8} gap={4}>
           <Icon as={FaExclamationTriangle} fontSize="3xl" color="orange.400" />
           <Text fontWeight="bold">No Active Subscription</Text>
-          <Text color="fg.muted" textAlign="center">
-            You are currently on the Free plan. Upgrade to Pro to unlock
-            advanced features.
-          </Text>
           <Button colorPalette="blue" onClick={onClose}>
             View Plans
           </Button>
@@ -147,7 +161,8 @@ export const ManageSubscriptionModal = ({
       );
     }
 
-    if (isFetching && !subDetails) {
+    // 2. Loading Data (Wait for Subscription API AND Config)
+    if (isFetching || isConfigLoading || !config) {
       return (
         <Center py={10}>
           <Spinner size="xl" color="blue.500" />
@@ -155,6 +170,24 @@ export const ManageSubscriptionModal = ({
       );
     }
 
+    // 3. Error
+    if (!subDetails) {
+      return (
+        <VStack py={8} gap={2}>
+          <Icon as={FaExclamationTriangle} fontSize="2xl" color="red.500" />
+          <Text color="red.600">Failed to retrieve subscription details.</Text>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={fetchSubscriptionDetails}
+          >
+            Retry
+          </Button>
+        </VStack>
+      );
+    }
+
+    // 4. Confirmation View (Cancel Flow)
     if (step === "confirm") {
       return (
         <VStack gap={4} py={2}>
@@ -173,22 +206,15 @@ export const ManageSubscriptionModal = ({
                   Are you sure?
                 </Text>
                 <Text fontSize="sm" color="red.700" mt={1}>
-                  You will lose access to <strong>GPT-4 & DeepSeek</strong>{" "}
-                  generation on{" "}
+                  You will lose access to <strong>GPT-4 & DeepSeek</strong> on{" "}
                   <strong>
-                    {getFormattedDate(subDetails?.currentPeriodEnd)}
+                    {getFormattedDate(subDetails.currentPeriodEnd)}
                   </strong>
                   .
                 </Text>
               </Box>
             </HStack>
           </Box>
-
-          <Text fontSize="sm" color="fg.muted">
-            This action cannot be undone immediately. You may need to
-            resubscribe manually.
-          </Text>
-
           <HStack w="full" gap={3} mt={2}>
             <Button
               variant="outline"
@@ -211,36 +237,47 @@ export const ManageSubscriptionModal = ({
       );
     }
 
-    // Default: Details View
+    // 5. Details View (Main)
+    const isCancelled = subDetails.cancelAtPeriodEnd;
+
     return (
       <VStack align="stretch" gap={5}>
-        {/* Plan Card */}
-        <Card.Root variant="outline" bg="blue.50" borderColor="blue.200">
+        <Card.Root
+          variant="outline"
+          bg={isCancelled ? "orange.50" : "blue.50"}
+          borderColor={isCancelled ? "orange.200" : "blue.200"}
+        >
           <Card.Body>
             <HStack justify="space-between" mb={2}>
               <HStack>
-                <Icon as={FaCrown} color="blue.500" />
-                <Text fontWeight="bold" color="blue.800">
-                  {subDetails?.planName || "Pro Plan"}
+                <Icon
+                  as={FaCrown}
+                  color={isCancelled ? "orange.500" : "blue.500"}
+                />
+                <Text
+                  fontWeight="bold"
+                  color={isCancelled ? "orange.800" : "blue.800"}
+                >
+                  {subDetails.planName}
                 </Text>
               </HStack>
               <Badge
-                colorPalette={
-                  subDetails?.cancelAtPeriodEnd ? "orange" : "green"
-                }
+                colorPalette={isCancelled ? "orange" : "green"}
                 variant="solid"
               >
-                {subDetails?.cancelAtPeriodEnd ? "CANCELLING" : "ACTIVE"}
+                {isCancelled ? "CANCELLING" : "ACTIVE"}
               </Badge>
             </HStack>
-            <Text fontSize="2xl" fontWeight="bold" color="blue.900">
-              $19/mo
+            <Text
+              fontSize="2xl"
+              fontWeight="bold"
+              color={isCancelled ? "orange.900" : "blue.900"}
+            >
+              {/* 🟢 Dynamic Price from Config */}₹{config.pricing.pro.price}/mo
             </Text>
-            <Text fontSize="sm" color="blue.700">
-              {subDetails?.cancelAtPeriodEnd
-                ? "Expires on: "
-                : "Next billing date: "}
-              {getFormattedDate(subDetails?.currentPeriodEnd)}
+            <Text fontSize="sm" color={isCancelled ? "orange.700" : "blue.700"}>
+              {isCancelled ? "Expires on: " : "Next billing date: "}
+              {getFormattedDate(subDetails.currentPeriodEnd)}
             </Text>
           </Card.Body>
         </Card.Root>
@@ -257,34 +294,44 @@ export const ManageSubscriptionModal = ({
             <Icon as={FaCheckCircle} color="green.500" />
             <Text fontSize="sm">Access to DeepSeek & GPT-4</Text>
           </HStack>
-          <HStack>
-            <Icon as={FaCheckCircle} color="green.500" />
-            <Text fontSize="sm">Priority Support</Text>
-          </HStack>
         </VStack>
 
         <Separator />
 
-        <HStack justify="space-between">
-          <HStack>
-            <Icon as={FaCreditCard} color="fg.muted" />
-            <Text fontSize="sm">•••• {subDetails?.cardLast4 || "••••"}</Text>
-          </HStack>
+        <VStack gap={3} w="full">
+          {/* Update Card - Always visible */}
           <Button
             variant="ghost"
             size="sm"
             colorPalette="blue"
+            w="full"
+            justifyContent="space-between"
             onClick={handleUpdatePaymentMethod}
             loading={isLoading}
+            disabled={isLoading}
+            borderWidth="1px"
+            borderColor="blue.200"
           >
-            Update Card <Icon as={FaExternalLinkAlt} ml={1} />
+            <HStack>
+              <Icon as={FaCreditCard} color="fg.muted" />
+              <Text>Update Payment Method (•••• {subDetails.cardLast4})</Text>
+            </HStack>
+            <Icon as={FaExternalLinkAlt} />
           </Button>
-        </HStack>
 
-        <Separator />
-
-        {!subDetails?.cancelAtPeriodEnd && (
-          <Box pt={2}>
+          {/* Dynamic Action Button: CANCEL vs RESUME */}
+          {isCancelled ? (
+            <Button
+              colorPalette="green"
+              size="sm"
+              w="full"
+              onClick={handleResumeSubscription}
+              loading={isLoading}
+            >
+              <Icon as={FaRedo} mr={2} />
+              Resume Subscription
+            </Button>
+          ) : (
             <Button
               variant="ghost"
               colorPalette="red"
@@ -292,11 +339,12 @@ export const ManageSubscriptionModal = ({
               w="full"
               justifyContent="flex-start"
               onClick={() => setStep("confirm")}
+              disabled={isLoading}
             >
               Cancel Subscription
             </Button>
-          </Box>
-        )}
+          )}
+        </VStack>
       </VStack>
     );
   };

@@ -237,17 +237,36 @@ export class CourseService {
     });
   }
 
-  async getUserCourses(userId: string) {
-    return await Course.find({ userId })
-      .sort({ createdAt: -1 })
-      .select("title description modules tags createdAt");
+  /**
+   * ✅ UPDATED: Supports Pagination
+   */
+  async getUserCourses(userId: string, page: number = 1, limit: number = 9) {
+    const skip = (page - 1) * limit;
+
+    // Run count and query in parallel for performance
+    const [courses, total] = await Promise.all([
+      Course.find({ userId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select("title description modules tags createdAt"),
+      Course.countDocuments({ userId }),
+    ]);
+
+    return {
+      data: courses,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
+        hasPrevPage: page > 1,
+      },
+    };
   }
 
-  async getAllCourses() {
-    return await Course.find()
-      .sort({ createdAt: -1 })
-      .select("title description tags createdAt userId");
-  }
+
 
   getPublicIdFromUrl = (url: string) => {
     try {

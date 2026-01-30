@@ -11,7 +11,6 @@ import { redisClient } from "../config/redis"; // 👈 Phase 8
  * NOW ASYNCHRONOUS via Redis
  * Updated for Phase 8: Ambiguity Check
  */
-// ... imports
 
 export const generateCourseOutline = async (req: Request, res: Response) => {
   try {
@@ -82,8 +81,6 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
   }
 };
 
-// ... rest of controller
-
 /**
  * POST /api/v1/courses/resume
  * Phase 8: Resume Endpoint (Called by Frontend Form)
@@ -94,7 +91,7 @@ export const resumeCourse = async (req: Request, res: Response) => {
     // @ts-ignore
     const userId = req.user?._id;
 
-    if (!jobId || !answers) {
+    if (!jobId || answers === undefined) {
       return res.status(400).json({ message: "Missing Resume Data" });
     }
 
@@ -184,7 +181,7 @@ export const getCourse = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
-
+// ✅ UPDATED: Extracts page/limit for pagination
 export const getAllCourses = async (req: Request, res: Response) => {
   try {
     // @ts-ignore
@@ -193,8 +190,12 @@ export const getAllCourses = async (req: Request, res: Response) => {
     if (!userId) {
       return res.status(401).json({ message: "User not authenticated" });
     }
-    const courses = await courseService.getUserCourses(userId);
-    res.json(courses);
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 9;
+
+    const result = await courseService.getUserCourses(userId, page, limit);
+    res.json(result);
   } catch (error) {
     logger.error("Controller Error - Get All Courses:", error);
     res.status(500).json({ error: "Failed to fetch courses" });

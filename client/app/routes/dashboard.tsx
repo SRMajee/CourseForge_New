@@ -35,7 +35,15 @@ export default function Dashboard() {
   const firstName = displayName.split(" ")[0];
   const navigate = useNavigate();
 
-  const { data: courses, isLoading: isCoursesLoading, isError } = useCourses();
+  // ✅ Pass page=1, limit=6 for dashboard preview
+  const {
+    data: response,
+    isLoading: isCoursesLoading,
+    isError,
+  } = useCourses(1, 6);
+
+  // ✅ Handle new response structure
+  const courses = response?.data || [];
 
   const [isModalOpen, setModalOpen] = useState(false);
 
@@ -46,7 +54,7 @@ export default function Dashboard() {
   }, [isAuth0Loading, isAuthenticated, navigate]);
 
   const isPageLoading =
-    isAuth0Loading || !user || isCoursesLoading || courses === undefined;
+    isAuth0Loading || !user || isCoursesLoading || response === undefined;
 
   if (isPageLoading) {
     return (
@@ -88,7 +96,7 @@ export default function Dashboard() {
       </HStack>
 
       <Heading size="lg" mb={6}>
-        Your Courses
+        Your Recent Courses
       </Heading>
 
       {courses?.length > 0 ? (

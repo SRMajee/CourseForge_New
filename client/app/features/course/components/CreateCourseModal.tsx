@@ -19,8 +19,7 @@ import { CourseTerminal } from "./CourseTerminal";
 import { ClarificationForm } from "./ClarificationForm";
 import { api } from "~/services/api";
 import { toaster } from "~/components/ui/toaster";
-
-const CREATE_COST = import.meta.env.VITE_COST_COURSE_CONTENT;
+import { useConfigStore } from "~/store/configStore";
 
 interface CreateCourseModalProps {
   isOpen: boolean;
@@ -31,6 +30,10 @@ export const CreateCourseModal = ({
   isOpen,
   onClose,
 }: CreateCourseModalProps) => {
+  const getCost = useConfigStore((state) => state.getCost);
+
+  // Dynamic Cost!
+  const CREATE_COST = getCost("createCourse");
   const [topic, setTopic] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
 
@@ -53,25 +56,21 @@ export const CreateCourseModal = ({
 
     mutate(topic, {
       onSuccess: (data: any) => {
+        // 1. Check for Clarification (Moved from onError)
+        // Since we spoofed this as a success in api.ts, we catch it here.
+        if (data?.code === "CLARIFICATION_NEEDED") {
+          if (data.data) setClarificationData(data.data);
+          return;
+        }
+
+        // 2. Normal Success (Job Started)
         if (data.jobId) {
           setJobId(data.jobId);
           if (user) setUser({ ...user, credits: user.credits - CREATE_COST });
         }
       },
       onError: (error: any) => {
-        const errData = error.response?.data;
-        const status = error.response?.status;
-
-        // ✅ FIX: Check for 422 status OR the specific code
-        // This prevents the "Generation Failed" toaster when we just need clarification
-        if (status === 422 || errData?.code === "CLARIFICATION_NEEDED") {
-          if (errData?.data) {
-            setClarificationData(errData.data);
-            return; // 🛑 EXIT EARLY: Do NOT show the error toaster
-          }
-        }
-
-        // Only show toaster for REAL errors (500, Network Error, etc.)
+        // Now this ONLY fires for real errors (500, Network, etc.)
         console.error("Generation failed", error);
         toaster.create({ title: "Generation Failed", type: "error" });
       },
@@ -96,6 +95,7 @@ export const CreateCourseModal = ({
     } catch (error) {
       console.error("Resume failed", error);
       toaster.create({ title: "Failed to resume", type: "error" });
+      setClarificationData(null);
     } finally {
       setIsResuming(false);
     }
