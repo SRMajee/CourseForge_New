@@ -40,6 +40,7 @@ export const TopUpModal = ({ isOpen, onClose }: TopUpModalProps) => {
       const { data } = await api.post("/payment/checkout", {
         packId,
         planId,
+        returnUrl: window.location.href,
       });
 
       if (data.url) {

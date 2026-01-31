@@ -66,7 +66,9 @@ export const ManageSubscriptionModal = ({
   const fetchSubscriptionDetails = async () => {
     setIsFetching(true);
     try {
-      const { data } = await api.get("/subscription/current");
+      const { data } = await api.post("/subscription/portal", {
+        returnUrl: window.location.href,
+      });
       setSubDetails(data);
     } catch (error) {
       console.error("Failed to load subscription details", error);

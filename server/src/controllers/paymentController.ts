@@ -50,10 +50,13 @@ export const upgradeUserPlan = async (
 // 1. Create Checkout Session
 export const createCheckoutSession = async (req: Request, res: Response) => {
   try {
-    const { packId, planId } = req.body;
+    const { packId, planId, returnUrl } = req.body;
     // @ts-ignore
     const userId = req.user?._id;
-
+    const baseUrl =
+      returnUrl ||
+      process.env.FRONTEND_URL ||
+      `${env.CLIENT_URL}/dashboard`;
     let priceId, mode, metadata;
 
     if (packId) {
@@ -89,8 +92,8 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
       line_items: [{ price: priceId, quantity: 1 }],
       mode: mode as any,
       metadata: metadata,
-      success_url: `${env.CLIENT_URL}/dashboard?payment=success`,
-      cancel_url: `${env.CLIENT_URL}/settings?payment=cancelled`,
+      success_url: `${env.CLIENT_URL}/dashboard?payment=success=true`,
+      cancel_url: `${env.CLIENT_URL}/settings?payment=cancelled=true`,
     });
 
     res.json({ url: session.url });
