@@ -1,6 +1,7 @@
 import { redisClient } from "../config/redis";
 import { User } from "../models/User";
 import logger from "../utils/logger";
+import { socketService } from "./socketService";
 
 export const creditService = {
   /**
@@ -53,8 +54,47 @@ export const creditService = {
       throw new Error("Race condition detected. Please retry.");
     }
 
-    // 5. Fire-and-forget MongoDB update (Eventual Consistency)
-    User.findByIdAndUpdate(userId, { $inc: { credits: -amount } }).exec();
+    const [err, redisNewBalance] = results[0];
+
+    if (err) {
+      logger.error("❌ Redis DECR Error:", err);
+      return false;
+    }
+
+    // 5. ✅ CRITICAL FIX: Update Mongo AND wait for the "True" Balance
+    // We use { new: true } to get the document AFTER the deduction
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $inc: { credits: -amount } },
+      { new: true },
+    );
+
+    // 6. ✅ SELF-HEALING: Check for Drift
+    // If Redis says one thing (e.g., 270) but DB says another (e.g., 90),
+    // we MUST trust the DB and fix Redis immediately.
+    const trueBalance = updatedUser
+      ? updatedUser.credits
+      : Number(redisNewBalance);
+
+    if (Number(redisNewBalance) !== trueBalance) {
+      logger.warn(
+        `⚠️ Credit Drift Detected! Redis: ${redisNewBalance}, DB: ${trueBalance}. Self-healing cache...`,
+      );
+      // Force Redis to match DB
+      await redisClient.set(key, trueBalance);
+    }
+
+    // 7. Emit the TRUE (DB) balance to the UI
+    const roomName = userId.toString();
+    logger.info(
+      `📡 Broadcasting deduction to ${roomName}. New Balance: ${trueBalance}`,
+    );
+
+    socketService.emitToUser(roomName, "credits_updated", {
+      credits: trueBalance, // 👈 Now sending the correct 90 (or 105-15)
+      deducted: amount,
+      reason: "usage",
+    });
 
     return true;
   },
@@ -69,7 +109,18 @@ export const creditService = {
     await redisClient.incrby(key, amount);
 
     // Sync Mongo
-    await User.findByIdAndUpdate(userId, { $inc: { credits: amount } });
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $inc: { credits: amount } },
+      { new: true },
+    );
+
+    // Emit result
+    if (updatedUser) {
+      socketService.emitToUser(userId.toString(), "credits_updated", {
+        credits: updatedUser.credits,
+      });
+    }
   },
 
   /**
@@ -81,6 +132,10 @@ export const creditService = {
 
     await redisClient.set(key, cap);
     await User.findByIdAndUpdate(userId, { credits: cap });
+
+    socketService.emitToUser(userId.toString(), "credits_updated", {
+      credits: cap,
+    });
 
     logger.info(`🔄 Reset credits for user ${userId} to ${cap}`);
   },

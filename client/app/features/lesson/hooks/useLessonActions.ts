@@ -50,11 +50,11 @@ export const useGenerateAudio = () => {
     },
     onSuccess: (data) => {
       // 'data' is now correctly typed as AudioResponse
-      toaster.create({
-        title: "Audio Ready",
-        description: `Now playing in ${data.language}`,
-        type: "success",
-      });
+      // toaster.create({
+      //   title: "Audio Ready",
+      //   description: `Now playing in ${data.language}`,
+      //   type: "success",
+      // });
       queryClient.invalidateQueries({ queryKey: ["lesson"] });
     },
     onError: (error) => {

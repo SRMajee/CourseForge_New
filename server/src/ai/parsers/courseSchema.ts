@@ -54,7 +54,7 @@ const MCQBlock = z
     explanation: data.explanation,
   }));
 
-// 6. Link Block (✅ ENSURE THIS IS PRESENT)
+// 6. Link Block
 const LinkBlock = z.object({
   type: z.enum(["link"]),
   title: z.string().describe("The clickable text for the link"),
@@ -73,12 +73,16 @@ const ContentSchema = z.array(
     CodeBlock,
     VideoBlock,
     MCQBlock,
-    LinkBlock, // 👈 This allows 'link' types to pass validation
+    LinkBlock,
   ]),
 );
 
-// 8. Main Response Schema
+// ✅ 8. Main Response Schema (Updated with CoT)
 export const lessonResponseSchema = z.object({
+  _thought: z
+    .string()
+    .optional()
+    .describe("Internal reasoning for the lesson flow"), // 👈 New Field
   title: z.string(),
   objectives: z.array(z.string()),
   content: ContentSchema,
@@ -97,7 +101,12 @@ const ModuleOutlineSchema = z.object({
     .describe("List of lessons in this module"),
 });
 
+// ✅ Updated Outline Schema (Updated with CoT)
 export const outlineSchema = z.object({
+  _thought: z
+    .string()
+    .optional()
+    .describe("Internal reasoning for the course structure"), // 👈 New Field
   title: z.string().describe("The main title of the course"),
   description: z.string().describe("A brief engaging summary of the course"),
   tags: z.array(z.string()).describe("1-3 relevant topic tags"),

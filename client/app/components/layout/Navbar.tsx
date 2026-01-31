@@ -17,6 +17,7 @@ import { ColorModeSwitcher } from "~/components/common/ColorModeSwitcher";
 import { Tooltip } from "~/components/ui/tooltip";
 import { CreditBalance } from "~/features/payment/components/CreditBalance";
 import { TopUpModal } from "~/features/payment/components/TopUpModal";
+import { useSocketCredits } from "~/hooks/useSocketCredits";
 import { useAuthStore } from "~/store/authStore";
 
 interface NavbarProps {
@@ -32,7 +33,6 @@ export const Navbar = ({ onToggleSidebar }: NavbarProps) => {
   } = useAuth0();
   const { user: dbUser } = useAuthStore();
   const [isTopUpOpen, setTopUpOpen] = useState(false);
-
   const user = dbUser || auth0User;
 
   // ✅ Check Pro Status safely

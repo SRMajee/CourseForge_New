@@ -5,14 +5,17 @@ import { clarificationService } from "../services/ClarificationService"; // 👈
 import logger from "../utils/logger";
 import { courseQueue } from "../queues/courseQueue";
 import { redisClient } from "../config/redis"; // 👈 Phase 8
+import { env } from "../config/env";
+import { socketService } from "../services/socketService";
+import { User } from "../models/User";
 
 /**
  * POST /api/v1/courses/outline
  * NOW ASYNCHRONOUS via Redis
  * Updated for Phase 8: Ambiguity Check
  */
-
 export const generateCourseOutline = async (req: Request, res: Response) => {
+  const COST = env.COST_CREATE_COURSE || 50;
   try {
     const { topic, skipClarification, userAnswers } = req.body;
     // @ts-ignore
@@ -22,42 +25,35 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Invalid Request" });
     }
 
-    await courseService.validateBalance(userId, 5);
-
+    await courseService.validateBalance(userId, COST);
+    const user = await User.findById(userId).select(
+      "planType subscriptionStatus",
+    );
+    const isPro =
+      user?.planType === "PRO" || user?.subscriptionStatus === "active";
     // ---------------------------------------------------------
-    // 🚦 PHASE 8: Synchronous Ambiguity Check
+    // 🚦 PHASE 8: Synchronous Ambiguity Check (PRO EXCLUSIVE)
     // ---------------------------------------------------------
-    if (!skipClarification) {
-      logger.info(`🤔 Checking ambiguity for: "${topic}"`);
-
+    // Only run clarification if User is PRO.
+    // Free users skip this and go straight to generation (General Mode).
+    if (isPro && !skipClarification) {
+      logger.info(`🤔 Checking ambiguity for: "${topic}" (User is PRO)`);
       const analysis = await clarificationService.analyzeTopic(topic);
-
-      // ✅ FIX: Only trigger 422 if we have valid questions
       if (analysis.isAmbiguous && analysis.questions?.length > 0) {
-        logger.info(`⏸️ Ambiguity detected. Asking user for specifics.`);
-
         const jobId = `job:${userId}:${Date.now()}`;
         await redisClient.setex(
           jobId,
           3600,
           JSON.stringify({ userId, topic, timestamp: Date.now() }),
         );
-
         return res.status(422).json({
           code: "CLARIFICATION_NEEDED",
-          message: "Please clarify your request",
-          data: {
-            jobId,
-            reason: analysis.reason,
-            questions: analysis.questions,
-          },
+          message: "Clarification Needed",
+          data: { jobId, questions: analysis.questions },
         });
       }
     }
 
-    // ---------------------------------------------------------
-    // ✅ QUEUE THE JOB (Auto-Resolve / Resume)
-    // ---------------------------------------------------------
     const job = await courseQueue.add("generate_outline", {
       userId,
       topic,
@@ -66,24 +62,19 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
       skipClarification: true,
     });
 
-    const waitingCount = await courseQueue.getWaitingCount();
-
     return res.status(202).json({
       message: "Course generation started",
       jobId: job.id,
       status: "queued",
-      queuePosition: waitingCount + 1,
     });
   } catch (error: any) {
-    // ... error handling
     logger.error("Controller Error:", error);
     return res.status(500).json({ message: "Failed to queue job" });
   }
 };
 
 /**
- * POST /api/v1/courses/resume
- * Phase 8: Resume Endpoint (Called by Frontend Form)
+ * ✅ FIXED RESUME CONTROLLER (Robust Input & Idempotency)
  */
 export const resumeCourse = async (req: Request, res: Response) => {
   try {
@@ -91,16 +82,22 @@ export const resumeCourse = async (req: Request, res: Response) => {
     // @ts-ignore
     const userId = req.user?._id;
 
-    if (!jobId || answers === undefined) {
-      return res.status(400).json({ message: "Missing Resume Data" });
+    logger.info(`🔄 [Resume] Request for Job ${jobId}`);
+
+    if (!jobId) {
+      return res.status(400).json({ message: "Missing Job ID" });
     }
 
-    // 1. Validate State from Redis
+    // 1. Validate State (Idempotency Fix)
     const stateRaw = await redisClient.get(jobId);
+
+    // 🛑 FIX: If key missing, assume duplicate request (success).
     if (!stateRaw) {
+      logger.warn(`⚠️ [Resume] Key missing for ${jobId}. Assuming duplicate.`);
+      socketService.emitToUser(userId, "resume_processed", { success: true });
       return res
-        .status(404)
-        .json({ message: "Session expired. Please start over." });
+        .status(200)
+        .json({ message: "Already Resumed", success: true });
     }
 
     const state = JSON.parse(stateRaw);
@@ -108,31 +105,86 @@ export const resumeCourse = async (req: Request, res: Response) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    // 2. Clean up old state
-    await redisClient.del(jobId);
+    await redisClient.expire(jobId, 5); // Short expire to prevent reuse
 
-    // 3. Re-Queue the Job (With Answers + Skip Flag)
-    // We strictly use the original topic from state to prevent tampering
+    // 2. Robust Answer Parsing (Fixes "Missing Answers")
+    // Ensures {0: "A", 1: "B"} or ["A", "B"] both map to {q1: "A", q2: "B"}
+    let processedAnswers: Record<string, any> = {};
+
+    if (Array.isArray(answers)) {
+      answers.forEach((val, idx) => {
+        processedAnswers[`q${idx + 1}`] = val;
+      });
+    } else if (typeof answers === "object" && answers !== null) {
+      Object.keys(answers).forEach((key, idx) => {
+        // If key is "q1", keep it. If "0", map to "q1".
+        const newKey = key.startsWith("q") ? key : `q${idx + 1}`;
+        processedAnswers[newKey] = answers[key];
+      });
+    }
+
+    logger.info(
+      `✅ [Resume] Normalized Answers: ${JSON.stringify(processedAnswers)}`,
+    );
+
+    // 3. Queue Job
     const job = await courseQueue.add("generate_outline", {
       userId,
       topic: state.topic,
       action: "generate_outline",
-      userAnswers: answers,
-      skipClarification: true, // Important: Don't check again
+      userAnswers: processedAnswers,
+      skipClarification: true,
     });
 
-    logger.info(`🚀 Resumed Job Queued: ${job.id}`);
+    logger.info(`🚀 [Resume] Job Queued: ${job.id}`);
 
-    return res.status(200).json({
-      message: "Course generation resumed",
+    // 4. ACKNOWLEDGE via Socket (Unsticks UI)
+    socketService.emitToUser(userId, "resume_processed", { success: true });
+    socketService.emitToUser(userId, "job_progress", {
       jobId: job.id,
+      status: "resumed",
+      message: "Clarification received. AI is thinking...",
+      progress: 5,
     });
+
+    return res.status(200).json({ message: "Resumed", jobId: job.id });
   } catch (error) {
-    logger.error("Resume Error:", error);
+    logger.error("❌ [Resume] Error:", error);
     return res.status(500).json({ message: "Failed to resume course" });
   }
 };
+/**
+ * POST /api/v1/courses/lessons/:lessonId/pdf
+ * Handles credit deduction for PDF download
+ */
+export const downloadLessonPDF = async (req: Request, res: Response) => {
+  try {
+    const { lessonId } = req.params;
+    // @ts-ignore
+    const userId = req.user?._id;
 
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // Deduct Credits via Service
+    const result = await lessonService.deductPDFCredits(userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Credits deducted",
+      remainingCredits: result.remainingCredits,
+    });
+  } catch (error: any) {
+    logger.error("Controller Error - PDF Deduct:", error);
+
+    if (error.message.includes("Insufficient credits")) {
+      return res
+        .status(402)
+        .json({ message: "Insufficient credits to download PDF." });
+    }
+
+    return res.status(500).json({ message: "Failed to process download." });
+  }
+};
 /**
  * POST /api/v1/courses/lessons/:lessonId/generate
  */

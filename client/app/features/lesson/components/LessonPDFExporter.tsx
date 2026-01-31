@@ -4,7 +4,10 @@ import { createPortal } from "react-dom";
 import { FaDownload } from "react-icons/fa";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-
+import { CourseService } from "~/services/courseService";
+import { toaster } from "~/components/ui/toaster";
+import { useConfigStore } from "~/store/configStore";
+import { useSocketCredits } from "~/hooks/useSocketCredits";
 interface LessonPDFExporterProps {
   lesson: any;
   lessonTitle?: string;
@@ -22,12 +25,29 @@ export const LessonPDFExporter = ({
 }: LessonPDFExporterProps) => {
   const printRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-
+  const getCost = useConfigStore((state) => state.getCost);
+  const EXPORT_PDF = getCost("exportPdf");
   const handleDownload = async () => {
     if (!printRef.current) return;
     setIsDownloading(true);
-
     try {
+      // 1. 🛑 CHECK BALANCE & DEDUCT CREDITS
+      // Using the lesson ID (Assuming lesson object has _id or id)
+      const lessonId = lesson._id || lesson.id;
+
+      if (!lessonId) {
+        throw new Error("Invalid Lesson ID");
+      }
+
+      await CourseService.deductPDFCredits(lessonId);
+
+      // ✅ Credits Deducted, Proceed to Generation
+      toaster.create({
+        title: "Credits Deducted",
+        description: "Generating PDF...",
+        type: "success",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 500));
       const element = printRef.current;
 
       // 1. Wait for images to render
@@ -729,7 +749,7 @@ export const LessonPDFExporter = ({
         loading={isDownloading}
         loadingText="Exporting..."
       >
-        <FaDownload /> Download PDF (-5)
+        <FaDownload /> Download PDF (-{EXPORT_PDF} )
       </Button>
       {createPortal(HiddenPdfContent, document.body)}
     </>

@@ -9,6 +9,7 @@ import {
   deleteModule,
   deleteLesson,
   resumeCourse,
+  downloadLessonPDF,
 } from "../controllers/courseController";
 import { get } from "node:http";
 
@@ -19,7 +20,7 @@ router.post("/outline", generateCourseOutline);
 router.post("/resume", resumeCourse);
 // 2. Lazy Load / Generate specific lesson content
 router.post("/lessons/:lessonId/generate", generateLessonContent);
-
+router.post("/lessons/:lessonId/pdf", downloadLessonPDF); // 👈 New PDF Route
 // 3. Get Full Course
 router.get("/:id", getCourse);
 

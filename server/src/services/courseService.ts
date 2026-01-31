@@ -70,44 +70,61 @@ export class CourseService {
 
     if (syllabusData) {
       logger.info(`⚡ [Cache Hit] Serving cached content for: ${topic}`);
-      return await this.createFromTemplate(userId, syllabusData);
+    } else {
+      logger.info(`🐢 [Cache Miss] Starting generation for: ${topic}`);
     }
 
-    logger.info(`🐢 [Cache Miss] Starting generation for: ${topic}`);
+    // 🛑 4. DEDUCT CREDITS (Before AI work)
+    // This prevents race conditions where they spend credits while AI is thinking.
+    const isDeducted = await creditService.deductCredits(userId, COST);
+    if (!isDeducted) throw new Error("Insufficient credits");
 
-    // ---------------------------------------------------------
-    // 🎯 PHASE 8.2: CONTEXT INJECTION
-    // ---------------------------------------------------------
-    let scopingContext = "";
-    if (options.userAnswers) {
-      // Format: "Experience: Beginner; Goal: Career Pivot"
-      scopingContext = Object.entries(options.userAnswers)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("; ");
+    logger.info(`💰 Deducted ${COST} credits (Hold). Starting AI...`);
 
-      // 🔍 LOG THIS to verify it's working
-      logger.info(`🎯 [Scoping] Applied User Context: "${scopingContext}"`);
-    }
+    try {
+      // 5. Run AI Generation (If not cached)
+      if (!syllabusData) {
+        // Context Injection
+        let scopingContext = "";
+        if (
+          options.userAnswers &&
+          Object.keys(options.userAnswers).length > 0
+        ) {
+          scopingContext = Object.entries(options.userAnswers)
+            .map(([k, v]) => `Question: ${k} -> Answer: ${v}`)
+            .join("\n");
+          logger.info(`🎯 [Scoping] Applied User Context:\n${scopingContext}`);
+        }
 
-    // A. Research (Refined by Scope)
-    // If user said "Advanced", we search for "Topic (Advanced)"
-    const searchTopic = scopingContext ? `${topic} (${scopingContext})` : topic;
-    const webContext = await researchService.getTechnicalContext(searchTopic);
-
-    // B. System Prompt (Refined by Scope)
-    const systemPrompt = `
+        // Research
+        const searchTopic = scopingContext
+          ? `${topic} with context: ${scopingContext}`
+          : topic;
+        const webContext =
+          await researchService.getTechnicalContext(searchTopic);
+        // B. System Prompt (Refined by Scope)
+        const systemPrompt = `
       You are an expert curriculum designer.
+      
+      STEP 1: THOUGHT PROCESS (_thought)
+      First, analyze the user's topic and preferences. 
+      - Plan the logical flow: Beginner -> Intermediate -> Advanced.
+      - Ensure prerequisites are covered early.
+      - Define specific learning goals for each module.
+      - Explain your reasoning in the '_thought' field.
+      
+      STEP 2: JSON GENERATION
+      Based on your thoughts, generate the strict JSON syllabus.
       
       ${scopingContext ? `🔥 CRITICAL USER PREFERENCES:\n${scopingContext}\n(You MUST tailor the content to match these preferences strictly.)\n` : ""}
       
       ${webContext ? `WEB CONTEXT:\n${webContext}\n` : ""}
       
       Create a detailed course syllabus for: "${topic}".
-      IMPORTANT: Output strictly valid JSON.
-      Structure the 'lessons' array as OBJECTS.
 
       EXAMPLE OUTPUT FORMAT:
       {
+        "_thought": "User wants a Data Science course. I will start with Pandas basics, then move to Visualization...",
         "title": "Course Name",
         "description": "Brief summary...",
         "tags": ["Tag1", "Tag2"],
@@ -117,20 +134,27 @@ export class CourseService {
       }
     `;
 
-    // C. AI Generation
-    syllabusData = await modelGateway.generateStructured(
-      systemPrompt,
-      outlineSchema,
-      planningTier,
-    );
+        syllabusData = await modelGateway.generateStructured(
+          systemPrompt,
+          outlineSchema,
+          planningTier,
+        );
 
-    // D. Save to Cache
-    await semanticCache
-      .setCachedOutline(cacheKey, syllabusData)
-      .catch(() => {});
+        // Save to Cache (Fire & Forget)
+        semanticCache
+          .setCachedOutline(cacheKey, syllabusData)
+          .catch((e) => logger.error("Cache Write Error", e));
+      }
 
-    // 3. Persist to DB
-    return await this.createFromTemplate(userId, syllabusData);
+      // 6. Save to DB (Pure Persistence)
+      const course = await this.saveCourseToDb(userId, syllabusData);
+      return course;
+    } catch (error) {
+      // 🚨 FAILURE: REFUND CREDITS
+      logger.error("❌ Generation Failed. Refunding user...", error);
+      await creditService.addCredits(userId, COST);
+      throw error;
+    }
   }
 
   /**
@@ -156,28 +180,14 @@ export class CourseService {
    * TRANSACTIONAL: Creates a Course from AI Syllabus & Deducts Credits
    * (Now called internally by generateCourse)
    */
-  async createFromTemplate(userId: string, data: any) {
-    const COST = CREDIT_COSTS.CREATE_COURSE;
-
-    // 🛑 1. ATOMIC DEDUCTION (Redis)
-    // We try to deduct FIRST. If this fails, we stop.
-    // This prevents the race condition where they spend credits elsewhere mid-generation.
-    const isDeducted = await creditService.deductCredits(userId, COST);
-
-    if (!isDeducted) {
-      throw new Error(
-        "Insufficient credits (Balance changed during generation)",
-      );
-    }
-
-    logger.info(`💰 Deducted ${COST} credits for Course Creation`);
-
-    // 2. MongoDB Transaction (Only for saving data now)
+  /**
+   * Helper: Pure DB Transaction (No Credit Logic)
+   */
+  private async saveCourseToDb(userId: string, data: any) {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      // Create Course
       const course = new Course({
         userId,
         title: data.title,
@@ -187,7 +197,6 @@ export class CourseService {
       });
       const savedCourse = await course.save({ session });
 
-      // Create Modules & Lessons
       for (const modData of data.modules) {
         const newModule = new Module({
           course: savedCourse._id,
@@ -219,15 +228,12 @@ export class CourseService {
 
       return this.getCourseById(savedCourse._id);
     } catch (error) {
-      await creditService.addCredits(userId, COST);
-      logger.error("❌ Course Creation Failed:", error);
       await session.abortTransaction();
       throw error;
     } finally {
       session.endSession();
     }
   }
-
   // --- READ / UTILITY METHODS ---
 
   async getCourseById(courseId: Object | string) {
@@ -265,8 +271,6 @@ export class CourseService {
       },
     };
   }
-
-
 
   getPublicIdFromUrl = (url: string) => {
     try {

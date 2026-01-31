@@ -29,7 +29,7 @@ const DEFAULTS = {
     createCourse: 50,
     generateLesson: 35,
     generateAudio: 15,
-    exportPdf: 5,
+    exportPdf: 15,
     regenerate: 15,
   },
   pricing: {
@@ -48,6 +48,7 @@ export const useConfigStore = create<ConfigState>()(
         set({ isLoading: true });
         try {
           const { data } = await api.get("/config");
+          console.log("Fetched config from backend:", data);
           set({ config: data, isLoading: false });
         } catch (err) {
           console.error("Failed to sync config with backend", err);

@@ -42,7 +42,7 @@ export const CreditBalance = ({ onOpenTopUp }: { onOpenTopUp: () => void }) => {
       // 5. Timer to reset color after 5 seconds
       const timer = setTimeout(() => {
         setHighlightColor("inherit");
-      }, 5000); // 👈 Changed to 5000ms
+      }, 3000); // 👈 Changed to 5000ms
 
       // Cleanup timer if credits change rapidly
       return () => clearTimeout(timer);

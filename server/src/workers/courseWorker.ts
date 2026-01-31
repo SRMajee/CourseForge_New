@@ -3,93 +3,135 @@ import { redisConnection } from "../config/redis";
 import { COURSE_QUEUE_NAME, CourseGenerationJob } from "../queues/courseQueue";
 import { courseService } from "../services/courseService";
 import { socketService } from "../services/socketService";
+import { User } from "../models/User";
 import logger from "../utils/logger";
 
-/**
- * The Background Worker
- * Handles: AI Generation, Database Saves, Socket Updates
- */
 export const courseWorker = new Worker<CourseGenerationJob>(
   COURSE_QUEUE_NAME,
   async (job: Job<CourseGenerationJob>) => {
-    // ✅ FIX: Extract userAnswers from job data so we can pass them to the service
-    const { userId, topic, userAnswers } = job.data;
+    const { userId, topic, action, userAnswers } = job.data;
+    let heartbeat: NodeJS.Timeout | null = null;
 
     try {
       logger.info(`⚙️ [Worker] Job ${job.id} started for ${userId}`);
 
-      // 1. Notify Frontend: Analysis
-      socketService.emitToUser(userId, "job_progress", {
+      // 1. Broadcast Setup
+      const user = await User.findById(userId);
+      const rooms = [userId];
+      if (user?.auth0Id) rooms.push(user.auth0Id);
+      if (user?.email) rooms.push(user.email);
+
+      const broadcast = (event: string, data: any) => {
+        rooms.forEach((room) => socketService.emitToUser(room, event, data));
+      };
+
+      // 2. Notify Started
+      broadcast("course_generation_started", {
         jobId: job.id,
-        status: "processing",
         message: `Analyzing topic: "${topic}"...`,
-        progress: 10,
       });
 
-      // Artificial delay so user sees the message (UX)
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // ✅ UX UPGRADE: Dynamic "Real" Feedback Loop
+      // Extract user choices to show them back in the UI
+      const answerValues = userAnswers
+        ? Object.values(userAnswers).filter(
+            (a) => typeof a === "string" && a.length > 1 && !a.includes("Skip"),
+          )
+        : [];
 
-      // 2. Notify Frontend: Researching
-      socketService.emitToUser(userId, "job_progress", {
-        jobId: job.id,
-        status: "processing",
-        message: "Researching latest curriculum standards...",
-        progress: 30,
-      });
+      const baseMessages = [
+        "Analyzing curriculum standards...",
+        "Structuring course modules...",
+        "Drafting lesson plans...",
+        "Validating technical accuracy...",
+      ];
 
-      // 3. EXECUTE THE HEAVY SERVICE
-      // ✅ FIX: Pass userAnswers to the service for Context Injection
-      const course = await courseService.generateCourse(userId, topic, {
-        userAnswers,
-      });
+      let tick = 0;
+      let progress = 5;
 
-      // 4. Notify Frontend: Finalizing
-      socketService.emitToUser(userId, "job_progress", {
-        jobId: job.id,
-        status: "processing",
-        message: "Finalizing course structure...",
-        progress: 90,
-      });
+      heartbeat = setInterval(() => {
+        // Non-linear progress (Fast start, slows near the end)
+        const increment = progress < 60 ? 10 : progress < 85 ? 5 : 1;
+        progress = Math.min(progress + increment, 95);
 
-      // 5. Notify Frontend: Complete
-      // IMPORTANT: We send the 'result' (the course object) here
-      socketService.emitToUser(userId, "job_complete", {
-        jobId: job.id,
-        status: "completed",
-        message: "Course generated successfully!",
-        result: course,
-      });
+        // Logic: Cycle between "System Action" and "User Context"
+        let currentMessage = baseMessages[tick % baseMessages.length];
 
-      logger.info(`✅ [Worker] Job ${job.id} Completed`);
-      return course;
+        // Every 2nd tick, show a specific user choice to make it feel "tailored"
+        if (answerValues.length > 0 && tick % 2 !== 0) {
+          const answerIndex = Math.floor(tick / 2) % answerValues.length;
+          currentMessage = `Tailoring content for: "${answerValues[answerIndex]}"...`;
+        }
+
+        broadcast("job_progress", {
+          jobId: job.id,
+          status: "processing",
+          message: currentMessage,
+          progress: Math.floor(progress),
+        });
+
+        tick++;
+      }, 1500); // Update every 1.5s
+
+      // 3. Execute Service
+      let result;
+      if (action === "generate_outline") {
+        result = await courseService.generateCourse(userId, topic, {
+          userAnswers,
+        });
+      }
+
+      // Stop Heartbeat
+      if (heartbeat) clearInterval(heartbeat);
+
+      // 4. Notify Completion
+      if (result) {
+        logger.info(
+          `✅ [Worker] Job ${job.id} DONE. Broadcasting to: ${rooms.join(", ")}`,
+        );
+
+        const payload = {
+          jobId: job.id,
+          courseId: result._id,
+          title: result.title,
+          message: "Course generated successfully!",
+          result: result,
+        };
+
+        broadcast("course_generated", payload);
+        broadcast("job_complete", payload);
+      }
+
+      return result;
     } catch (error: any) {
+      if (heartbeat) clearInterval(heartbeat);
       logger.error(`❌ [Worker] Job ${job.id} Failed:`, error);
 
-      // 6. Notify Frontend: Error
-      socketService.emitToUser(userId, "job_error", {
-        jobId: job.id,
-        status: "failed",
-        message: error.message || "Failed to generate course.",
+      const user = await User.findById(userId);
+      const rooms = [userId];
+      if (user?.auth0Id) rooms.push(user.auth0Id);
+      if (user?.email) rooms.push(user.email);
+
+      rooms.forEach((room) => {
+        socketService.emitToUser(room, "course_generation_error", {
+          jobId: job.id,
+          message: error.message || "Failed to generate course.",
+        });
       });
 
-      throw error; // Let BullMQ handle retries if configured
+      throw error;
     }
   },
   {
     connection: redisConnection,
-    concurrency: 5, // Handle 5 courses in parallel
-    limiter: {
-      max: 10, // Max 10 jobs
-      duration: 1000, // per second
-    },
+    concurrency: 5,
+    lockDuration: 60000,
   },
 );
 
-// Graceful Shutdown
-courseWorker.on("completed", (job) => {
-  logger.info(`Job ${job.id} has completed!`);
-});
-
-courseWorker.on("failed", (job, err) => {
-  logger.error(`Job ${job?.id} has failed with ${err.message}`);
-});
+courseWorker.on("completed", (job) =>
+  logger.info(`Job ${job.id} has completed!`),
+);
+courseWorker.on("failed", (job, err) =>
+  logger.error(`Job ${job?.id} has failed with ${err.message}`),
+);

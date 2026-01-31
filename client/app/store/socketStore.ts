@@ -8,8 +8,9 @@ interface SocketState {
   disconnect: () => void;
 }
 
-// Ensure this matches your Backend Port (8080)
-const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api/v1', '') || "http://localhost:8080";
+const SOCKET_URL =
+  import.meta.env.VITE_API_URL?.replace("/api/v1", "") ||
+  "http://localhost:8080";
 
 export const useSocketStore = create<SocketState>((set, get) => ({
   socket: null,
@@ -17,9 +18,10 @@ export const useSocketStore = create<SocketState>((set, get) => ({
 
   connect: (userId: string) => {
     const { socket } = get();
-    
-    // Prevent multiple connections
-    if (socket?.connected) return;
+
+    // ✅ FIX: Check if socket INSTANCE exists, not just if connected.
+    // This prevents creating a second socket while the first is still shaking hands.
+    if (socket) return;
 
     console.log("🔌 Initializing Socket Connection to:", SOCKET_URL);
 
@@ -45,6 +47,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   disconnect: () => {
     const { socket } = get();
     if (socket) {
+      console.log("🛑 Disconnecting Socket");
       socket.disconnect();
       set({ socket: null, isConnected: false });
     }

@@ -30,6 +30,7 @@ import { useAuthStore } from "./store/authStore"; // 👈 Import Auth Store
 import { useSocketStore } from "./store/socketStore"; // 👈 Import Socket Store
 import { useConfigStore } from "./store/configStore";
 import { Toaster, toaster } from "~/components/ui/toaster"; // 👈 Import toaster
+import { useSocketCredits } from "./hooks/useSocketCredits";
 
 // 👇 NEW: Component to handle Socket Connection
 const SocketClient = () => {
@@ -39,15 +40,18 @@ const SocketClient = () => {
   useEffect(() => {
     if (user?._id) {
       connect(user._id);
-    } else {
-      disconnect();
     }
+
+    return () => {
+      disconnect();
+    };
   }, [user?._id, connect, disconnect]);
 
   return null; // Invisible component
 };
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  useSocketCredits();
   const [queryClient] = useState(
     () =>
       new QueryClient({

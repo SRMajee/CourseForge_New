@@ -6,12 +6,10 @@ import {
   HStack,
   Icon,
   Input,
-  Kbd,
   Badge,
-  Separator,
 } from "@chakra-ui/react";
 import { useState, useEffect, useRef } from "react";
-import { FaTerminal, FaChevronRight, FaArrowRight } from "react-icons/fa";
+import { FaTerminal } from "react-icons/fa";
 
 interface Question {
   id: string;
@@ -34,10 +32,15 @@ export const ClarificationForm = ({
   isLoading,
 }: ClarificationFormProps) => {
   const [currentStep, setCurrentStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [textInput, setTextInput] = useState("");
 
-  // Terminal History Logs
+  // ✅ CRITICAL FIX: Use Ref for answers to prevent stale state in timeouts
+  // This solves the "Missing Answers" issue.
+  const answersRef = useRef<Record<string, string>>({});
+
+  // ✅ CRITICAL FIX: Track submission state to prevent premature error
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+
   const [logs, setLogs] = useState<string[]>([
     "> INITIALIZING CLARIFICATION PROTOCOL...",
     `> SYSTEM ALERT: Ambiguity Detected.`,
@@ -49,38 +52,37 @@ export const ClarificationForm = ({
   const currentQuestion = questions[currentStep];
   const isComplete = currentStep >= questions.length;
 
-  // Auto-scroll to bottom of logs
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs, currentStep]);
+
+  // ✅ ROBUST ERROR CHECK: Only show error if we ACTUALLY submitted
   useEffect(() => {
-    if (isComplete && !isLoading) {
-      // Go back to the last question so the user isn't stuck on the spinner
+    if (isComplete && hasSubmitted && !isLoading) {
       setCurrentStep(questions.length - 1);
       addLog(
         "❌ Error: Transmission failed or rejected. Please retry.",
         "info",
       );
+      setHasSubmitted(false); // Reset to allow retry
     }
-  }, [isLoading, isComplete, questions.length]);
+  }, [isLoading, isComplete, hasSubmitted, questions.length]);
+
   const addLog = (message: string, type: "info" | "user" = "info") => {
     const prefix = type === "user" ? "root@user:~$" : ">";
     setLogs((prev) => [...prev, `${prefix} ${message}`]);
   };
 
   const handleAnswer = (questionId: string, value: string) => {
-    // 1. Log the choice
     addLog(`Selected: "${value}"`, "user");
 
-    // 2. Save Answer
-    // Filter out "Decide for me" to keep it clean (backend treats missing key as skip anyway)
+    // Update Ref IMMEDIATELY (Source of Truth)
     if (!value.includes("Decide for me")) {
-      setAnswers((prev) => ({ ...prev, [questionId]: value }));
+      answersRef.current = { ...answersRef.current, [questionId]: value };
     } else {
       addLog("Skipping parameter configuration...", "info");
     }
 
-    // 3. Advance
     setTimeout(() => {
       if (currentStep < questions.length - 1) {
         setCurrentStep((prev) => prev + 1);
@@ -91,25 +93,24 @@ export const ClarificationForm = ({
   };
 
   const finishSequence = () => {
-    setCurrentStep(questions.length); // Move to "Complete" state
+    setCurrentStep(questions.length);
     addLog("CONFIGURATION COMPLETE.", "info");
     addLog("RESUMING GENERATION SEQUENCE...", "info");
 
-    // Slight delay for effect before actual submit
     setTimeout(() => {
-      onSubmit(answers);
+      // ✅ Send Ref.current (Contains ALL answers guaranteed)
+      console.log("🚀 Submitting Answers:", answersRef.current);
+      onSubmit(answersRef.current);
+      setHasSubmitted(true); // Now we wait for loading to toggle
     }, 800);
   };
 
   const handleTextSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!textInput.trim()) return; // Prevent empty (use skip button instead)
-
+    if (!textInput.trim()) return;
     handleAnswer(currentQuestion.id, textInput);
     setTextInput("");
   };
-
-  // --- RENDER ---
 
   return (
     <Box
@@ -122,7 +123,7 @@ export const ClarificationForm = ({
       borderWidth="1px"
       borderColor="gray.800"
       w="full"
-      h="500px" // Fixed height for terminal feel
+      h="500px"
       display="flex"
       flexDirection="column"
     >
@@ -143,7 +144,7 @@ export const ClarificationForm = ({
         </Badge>
       </HStack>
 
-      {/* Logs Area (Scrollable) */}
+      {/* Logs */}
       <VStack
         align="start"
         flex="1"
@@ -151,14 +152,7 @@ export const ClarificationForm = ({
         gap={2}
         fontSize="sm"
         mb={4}
-        css={{
-          "&::-webkit-scrollbar": { width: "4px" },
-          "&::-webkit-scrollbar-track": { background: "transparent" },
-          "&::-webkit-scrollbar-thumb": {
-            background: "#48BB78",
-            borderRadius: "24px",
-          },
-        }}
+        css={{ "&::-webkit-scrollbar": { display: "none" } }}
       >
         {logs.map((log, i) => (
           <Text key={i} opacity={0.8} wordBreak="break-word">
@@ -168,11 +162,10 @@ export const ClarificationForm = ({
         <div ref={bottomRef} />
       </VStack>
 
-      {/* Interactive Zone (Bottom) */}
+      {/* Input Area */}
       <Box borderTopWidth="1px" borderColor="gray.800" pt={4}>
         {!isComplete ? (
           <VStack align="stretch" gap={4}>
-            {/* Question Text */}
             <Text color="white" fontWeight="bold" fontSize="md">
               <Text as="span" color="green.500" mr={2}>
                 ?
@@ -180,7 +173,6 @@ export const ClarificationForm = ({
               [{currentStep + 1}/{questions.length}] {currentQuestion.text}
             </Text>
 
-            {/* Options */}
             {currentQuestion.type === "choice" ? (
               <VStack align="stretch" gap={2}>
                 {currentQuestion.options.map((opt, idx) => (
@@ -204,7 +196,6 @@ export const ClarificationForm = ({
                 ))}
               </VStack>
             ) : (
-              // Text Input Mode
               <form onSubmit={handleTextSubmit}>
                 <HStack>
                   <Text color="green.500">{">"}</Text>
@@ -230,7 +221,6 @@ export const ClarificationForm = ({
               </form>
             )}
 
-            {/* Skip Option */}
             <HStack justify="flex-end">
               <Button
                 size="xs"
@@ -246,10 +236,9 @@ export const ClarificationForm = ({
             </HStack>
           </VStack>
         ) : (
-          // Loading State (Post-Completion)
           <HStack justify="center" py={4} color="green.400" gap={3}>
             <Box className="animate-spin" fontSize="xl">
-              <Icon as={FaTerminal} /> {/* Or a spinner */}
+              <Icon as={FaTerminal} />
             </Box>
             <Text>TRANSMITTING DATA...</Text>
           </HStack>

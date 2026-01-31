@@ -1,11 +1,11 @@
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import Groq from "groq-sdk";
-import { z, ZodTypeAny } from "zod"; // 👈 Import ZodTypeAny
-import { wrapOpenAI } from "langsmith/wrappers"; // 👈 For OpenAI automatic tracing
+import { z, ZodTypeAny } from "zod";
+import { wrapOpenAI } from "langsmith/wrappers";
 import { traceable, getCurrentRunTree } from "langsmith/traceable";
 import { retryWithBackoff } from "../utils/retryHelper";
-// Define the Tiers based on your plan
+
 export enum TaskTier {
   LOGIC_REASONING = "tier_deepseek", // DeepSeek-V3 (Smartest + Cheap)
   CREATIVE_WRITING = "tier_llama_70b", // Llama 3.3 70B (Best Prose)
@@ -20,7 +20,6 @@ export class ModelGateway {
   private groq: Groq;
 
   constructor() {
-    // 1. Wrap OpenAI (Auto-tracks tokens & cost via the wrapper)
     this.openai = wrapOpenAI(
       new OpenAI({ apiKey: process.env.OPENAI_API_KEY }),
     );
@@ -41,44 +40,69 @@ export class ModelGateway {
     prompt: string,
     tier: TaskTier,
     systemInstruction?: string,
+    jsonMode: boolean = false, // 👈 New Flag to trigger Native JSON
   ): Promise<string> {
     try {
       switch (tier) {
         case TaskTier.LOGIC_REASONING:
-          // console.log("🧠 [Tier 1 PRO] Using GPT-4o/DeepSeek...");
-          // return this.callOpenAI(prompt, systemInstruction);
-
-          // ✅ ADD THIS TEMPORARY LINE (Fallback to Gemini)
-          // Gemini 1.5 Flash is smart enough to handle the syllabus for now.
-          // console.log("⚠️ [Limit Reached] Redirecting Tier 1 to Gemini...");
-          // return this.callGemini(prompt, systemInstruction);
+          return this.callGroq(
+            prompt,
+            systemInstruction,
+            "llama-3.3-70b-versatile",
+            jsonMode,
+          );
           // console.log("🧠 [Factory] Routing to DeepSeek-V3...");
-          // return this.callDeepSeek(prompt, systemInstruction);
-          console.log("⚡ [Tier 1 Strategy] Using Groq (Llama 3) for speed...");
-          return this.callGroq(prompt, systemInstruction);
+          // return this.callDeepSeek(prompt, systemInstruction, jsonMode);
+
         case TaskTier.CREATIVE_WRITING:
-          console.log("⚡ [Tier 1 BASIC] Using Groq (Llama 3)...");
-          return this.callGroq(prompt, systemInstruction);
+          return this.callGroq(
+            prompt,
+            systemInstruction,
+            "llama-3.3-70b-versatile",
+            jsonMode,
+          );
+
         case TaskTier.FAST_UTILITY:
-          // return this.callGemini(prompt, systemInstruction);
-          return this.callGroq(prompt, systemInstruction);
+          return this.callGroq(
+            prompt,
+            systemInstruction,
+            "llama-3.1-8b-instant",
+            jsonMode,
+          );
+
         case TaskTier.JSON_REPAIR:
-          return this.callGroq(prompt, systemInstruction);
+          return this.callGroq(
+            prompt,
+            systemInstruction,
+            "llama-3.3-70b-versatile",
+            jsonMode,
+          );
+          // return this.callGemini(prompt, systemInstruction);
+
         default:
           throw new Error("Invalid Task Tier");
       }
     } catch (error) {
       console.error(`Error in ModelGateway [${tier}]:`, error);
-      // Fallback Strategy: If Groq/Gemini fails, fall back to OpenAI (optional)
-      if (tier !== TaskTier.LOGIC_REASONING) {
-        console.warn("Falling back to OpenAI...");
-        return this.callOpenAI(prompt, systemInstruction);
+      // Fallback Strategy
+      if (tier === TaskTier.LOGIC_REASONING) {
+        console.warn("⚠️ DeepSeek failed, falling back to Groq...");
+        return this.callGroq(
+          prompt,
+          systemInstruction,
+          "llama-3.3-70b-versatile",
+          jsonMode,
+        );
       }
       throw error;
     }
   }
+
+  // --- MODEL DRIVERS (Updated for Native Schemas) ---
+
+  // 1. DeepSeek Driver
   private callDeepSeek = traceable(
-    async (prompt: string, system?: string) => {
+    async (prompt: string, system?: string, jsonMode?: boolean) => {
       const run = getCurrentRunTree();
       return retryWithBackoff(async () => {
         const response = await this.deepseek.chat.completions.create({
@@ -90,20 +114,14 @@ export class ModelGateway {
             },
             { role: "user", content: prompt },
           ],
-          temperature: 0.3, // Low temp for logic
+          // ✅ DeepSeek supports JSON mode natively
+          response_format: jsonMode ? { type: "json_object" } : undefined,
+          temperature: 0.3,
         });
 
-        // Track Usage
         const usage = response.usage;
         if (run && usage) {
-          run.metadata = {
-            ...run.metadata,
-            token_usage: {
-              prompt_tokens: usage.prompt_tokens,
-              completion_tokens: usage.completion_tokens,
-              total_tokens: usage.total_tokens,
-            },
-          };
+          run.metadata = { ...run.metadata, token_usage: usage };
         }
         return response.choices[0].message.content || "";
       });
@@ -111,68 +129,18 @@ export class ModelGateway {
     {
       name: "DeepSeek V3",
       run_type: "llm",
-      metadata: { ls_provider: "deepseek", ls_model_name: "deepseek-chat" },
-    },
-  );
-  // --- TIER 1: GPT-4o ---
-  private async callOpenAI(prompt: string, system?: string): Promise<string> {
-    return retryWithBackoff(async () => {
-      const response = await this.openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: system || "You are a helpful assistant." },
-          { role: "user", content: prompt },
-        ],
-      });
-      return response.choices[0].message.content || "";
-    });
-  }
-
-  // --- TIER 2: Gemini (Fixed Rate Limits) ---
-  private callGemini = traceable(
-    async (prompt: string, system?: string) => {
-      const run = getCurrentRunTree();
-      return retryWithBackoff(async () => {
-        const model = this.gemini.getGenerativeModel({
-          model: "gemini-2.5-flash",
-          systemInstruction: system,
-          generationConfig: {
-            responseMimeType: "application/json",
-          },
-        });
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        // Log Usage
-        const usage = response.usageMetadata;
-        console.log("💎 Gemini Usage:", usage);
-        if (run && usage) {
-          run.metadata = {
-            ...run.metadata,
-            token_usage: {
-              prompt_tokens: usage.promptTokenCount,
-              completion_tokens: usage.candidatesTokenCount,
-              total_tokens: usage.totalTokenCount,
-            },
-          };
-        }
-
-        return response.text();
-      });
-    },
-    {
-      name: "Gemini Flash",
-      run_type: "llm",
-      metadata: {
-        ls_provider: "google",
-        ls_model_name: "gemini-2.5-flash",
-      },
+      metadata: { ls_provider: "deepseek" },
     },
   );
 
-  // --- TIER 3: Groq ---
+  // 2. Groq Driver
   private callGroq = traceable(
-    async (prompt: string, system?: string) => {
+    async (
+      prompt: string,
+      system?: string,
+      modelId?: string,
+      jsonMode?: boolean,
+    ) => {
       const run = getCurrentRunTree();
       return retryWithBackoff(async () => {
         const response = await this.groq.chat.completions.create({
@@ -183,167 +151,117 @@ export class ModelGateway {
             },
             { role: "user", content: prompt },
           ],
-          model: "llama-3.3-70b-versatile",
-          temperature: 0.1,
+          model: modelId || "llama-3.3-70b-versatile",
+          // ✅ Groq (Llama 3) supports JSON mode natively
+          response_format: jsonMode ? { type: "json_object" } : undefined,
         });
 
         const usage = response.usage;
-
-        // 🔍 DEBUG: Check if we are getting usage from Groq
-        if (!usage) console.warn("⚠️ Groq did not return usage stats!");
-        else console.log("⚡ Groq Usage:", usage);
         if (run && usage) {
-          run.metadata = {
-            ...run.metadata,
-            token_usage: {
-              prompt_tokens: usage.prompt_tokens,
-              completion_tokens: usage.completion_tokens,
-              total_tokens: usage.total_tokens,
-            },
-          };
+          run.metadata = { ...run.metadata, token_usage: usage };
         }
         return response.choices[0]?.message?.content || "";
       });
     },
+    { name: "Groq Llama", run_type: "llm", metadata: { ls_provider: "groq" } },
+  );
+
+  // 3. Gemini Driver
+  private callGemini = traceable(
+    async (prompt: string, system?: string) => {
+      const run = getCurrentRunTree();
+      return retryWithBackoff(async () => {
+        const model = this.gemini.getGenerativeModel({
+          // ✅ FIXED: Use Stable Model (1.5-flash)
+          model: "gemini-1.5-flash",
+          systemInstruction: system,
+          generationConfig: {
+            // ✅ GUARDRAIL: Forces Gemini to output JSON
+            responseMimeType: "application/json",
+          },
+        });
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const usage = response.usageMetadata;
+
+        if (run && usage) {
+          run.metadata = {
+            ...run.metadata,
+            token_usage: {
+              prompt_tokens: usage.promptTokenCount,
+              completion_tokens: usage.candidatesTokenCount,
+              total_tokens: usage.totalTokenCount,
+            },
+          };
+        }
+        return response.text();
+      });
+    },
     {
-      name: "Groq Llama3",
+      name: "Gemini Flash",
       run_type: "llm",
-      metadata: {
-        ls_provider: "groq",
-        ls_model_name: "llama-3.3-70b-versatile",
-      },
+      metadata: { ls_provider: "google" },
     },
   );
 
   /**
-   * SPECULATIVE DRAFTING LOOP
-   * Phase 1: High-Speed Draft (Groq)
-   * Phase 2: Intelligent Polish (GPT-4o-mini)
-   */
-  async draftAndVerify(userPrompt: string, context: string): Promise<string> {
-    console.time("Speculative-Loop");
-
-    // --- STEP 1: THE DRAFT (Writer) ---
-    console.log("⚡ [Drafting] Generating raw text with Groq (Llama 3)...");
-    const draftResponse = await this.groq.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a fast technical writer. Write a comprehensive, verbose draft in Markdown. Focus on speed and quantity of information.",
-        },
-        {
-          role: "user",
-          content: `Context: ${context}\n\nTask: ${userPrompt}`,
-        },
-      ],
-      model: "llama-3.1-8b-instant",
-    });
-    const rawDraft = draftResponse.choices[0]?.message?.content || "";
-
-    // --- STEP 2: THE VERIFY (Editor) ---
-    // console.log("🔍 [Verifying] Polishing with GPT-4o-mini...");
-    // const polishedResponse = await this.openai.chat.completions.create({
-    //   model: "gpt-4o-mini", // Cost-effective intelligence
-    //   messages: [
-    //     {
-    //       role: "system",
-    //       content: `You are a strict technical editor.
-    //       1. Fix factual errors.
-    //       2. Improve flow and tone (make it engaging).
-    //       3. Ensure valid Markdown formatting.
-    //       4. Do NOT shorten the content significantly.`,
-    //     },
-    //     { role: "user", content: `Review and fix this draft:\n\n${rawDraft}` },
-    //   ],
-    //   temperature: 0.3, // Keep edits focused
-    // });
-
-    // console.timeEnd("Speculative-Loop");
-    // return polishedResponse.choices[0].message.content || "";
-
-    // console.log("🔍 [Verifying] Swapping OpenAI for Gemini...");
-
-    // const verificationPrompt = `
-    //   You are a strict technical editor.
-    //   Review and fix this draft. Return ONLY the fixed content.
-
-    //   DRAFT:
-    //   ${rawDraft}
-    // `;
-
-    // // Re-use your existing Gemini helper
-    // return this.callGemini(verificationPrompt);
-
-    console.log("⚠️ [Limit Reached] Skipping Verification Step.");
-    console.timeEnd("Speculative-Loop");
-    return rawDraft;
-  }
-  /**
-   * SELF-HEALING GENERATOR
-   * Generic S allows any Zod Schema (transforms, defaults, unions).
-   * Returns z.infer<S> automatically.
-   */
-  /**
-   * SELF-HEALING GENERATOR (Fixed JSON Parsing)
+   * SELF-HEALING GENERATOR (Simplified for Phase 2)
    */
   generateStructured = traceable(
     async <S extends ZodTypeAny>(
       prompt: string,
       schema: S,
       initialTier: TaskTier,
-      maxRetries = 3,
+      maxRetries = 2,
     ): Promise<z.infer<S>> => {
       let currentPrompt = prompt;
       let attempts = 0;
       let currentTier = initialTier;
+
       while (attempts <= maxRetries) {
         try {
-          console.log(`🔄 [Attempt ${attempts + 1}] Generating structure...`);
+          console.log(
+            `🔄 [Attempt ${attempts + 1}] Generating structure with ${currentTier}...`,
+          );
 
+          // ✅ 1. Enable JSON Mode via Flag
           const rawResult = await this.generate(
             currentPrompt,
             currentTier,
-            "IMPORTANT: Output STRICT JSON only. Do not use Markdown code blocks. Do not add any conversational text.",
+            "You are a strict data generator. Output only valid JSON.",
+            true, // <--- Forces API JSON Mode
           );
 
-          // 1. Cleaner Logic
+          // 2. Parse
           const jsonMatch = rawResult.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) {
-            throw new Error("No JSON object found in response");
-          }
+          if (!jsonMatch) throw new Error("No JSON object found");
 
-          const jsonString = jsonMatch[0];
-          let parsedJson;
+          const parsedJson = JSON.parse(jsonMatch[0]);
 
-          try {
-            parsedJson = JSON.parse(jsonString);
-          } catch (e) {
-            throw new Error("Invalid JSON syntax");
-          }
-
-          // 2. Validate with Zod
+          // 3. Validate
           const validation = schema.safeParse(parsedJson);
 
-          // ✅ 3. THE MISSING PIECE: Check for success!
           if (validation.success) {
             console.log("✅ [Validation] Success!");
             return validation.data;
           }
 
-          // 4. Validation Failed -> Trigger Healer
+          // 4. Heal
           console.warn("❌ [Validation] Failed. Triggering Self-Healing...");
           const errors = validation.error.issues
             .map((i) => `${i.path.join(".")}: ${i.message}`)
             .join("; ");
-          currentTier = TaskTier.JSON_REPAIR;
-          currentPrompt = `PREVIOUS OUTPUT WAS INVALID.\nERROR: ${errors}\nORIGINAL REQUEST: ${prompt}\nACTION: Fix the JSON structure and return ONLY the JSON.`;
+
+          currentTier = TaskTier.JSON_REPAIR; // Switch to Gemini for repair
+          currentPrompt = `PREVIOUS OUTPUT WAS INVALID.\nERROR: ${errors}\nORIGINAL REQUEST: ${prompt}\nACTION: Fix the JSON structure.`;
           attempts++;
         } catch (error: any) {
           console.warn(`❌ [Attempt ${attempts + 1}] Error:`, error.message);
-
           if (error.message.includes("Max retries exceeded")) throw error;
 
+          // Retry logic
+          currentTier = TaskTier.JSON_REPAIR;
           currentPrompt = `The previous output was not valid JSON. Return ONLY the raw JSON string.\nOriginal Prompt: ${prompt}`;
           attempts++;
         }
@@ -357,5 +275,5 @@ export class ModelGateway {
   );
 }
 
-// Export a singleton instance
 export const modelGateway = new ModelGateway();
+

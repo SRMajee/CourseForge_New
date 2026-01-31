@@ -40,12 +40,12 @@ export default function Settings() {
 
   const user = dbUser || auth0User;
 
-  // 👇 Dynamic Plan Logic (Case-insensitive safety)
+  //  Dynamic Plan Logic (Case-insensitive safety)
   const isPro =
     dbUser?.planType?.toUpperCase() === "PRO" ||
     dbUser?.subscriptionStatus === "active";
 
-  // 👇 Generate COST_MENU dynamically from Store
+  //  Generate COST_MENU dynamically from Store
   const COST_MENU = [
     {
       action: "Create Course Outline",

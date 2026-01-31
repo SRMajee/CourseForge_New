@@ -16,6 +16,8 @@ import { semanticCache } from "../utils/semanticCache";
 import { youtubeService } from "./youtubeService";
 import { retryWithBackoff } from "../utils/retryHelper";
 import { codeExecutionService } from "./CodeExecutionService";
+import { creditService } from "./creditService";
+import { socketService } from "./socketService";
 export class LessonService {
   /**
    * ✅ VALIDATION HELPER
@@ -25,6 +27,23 @@ export class LessonService {
     if (!user || user.credits < cost) {
       throw new Error(`Insufficient credits. Required: ${cost}`);
     }
+  }
+  // ✅ NEW: Handle PDF Credit Deduction
+  async deductPDFCredits(userId: string) {
+    const COST = CREDIT_COSTS.EXPORT_PDF; // Cost for PDF Download
+
+    // 1. Check & Deduct Atomically
+    const success = await creditService.deductCredits(userId, COST);
+
+    if (!success) {
+      throw new Error(`Insufficient credits. Required: ${COST}`);
+    }
+
+    logger.info(
+      `💰 Deducted ${COST} credits for PDF Download (User: ${userId})`,
+    );
+    const remainingCredits = await creditService.getBalance(userId);
+    return { success: true, remainingCredits };
   }
   /**
    * ✅ GENERATION LOGIC (Prompt + AI + DB + Credits)
@@ -70,8 +89,17 @@ export class LessonService {
       // ---------------------------------------------------------
       const systemPrompt = `
       You are an interactive course creator.
-      CRITICAL: Output strictly valid JSON.
-      The 'content' field must be an ARRAY of content blocks.
+      
+      STEP 1: CONTENT PLANNING (_thought)
+      In the '_thought' field, outline the lesson flow. 
+      - Start with a Hook/Objective.
+      - Explain the Concept clearly.
+      - Provide a Code Example (if technical).
+      - Search for a Video (using 'query').
+      - End with a Knowledge Check (MCQ).
+      
+      STEP 2: JSON GENERATION
+      Generate the strict JSON content array based on your plan.
 
       ALLOWED BLOCK TYPES:
       - { "type": "heading", "text": "..." }
@@ -81,23 +109,16 @@ export class LessonService {
       - { "type": "video", "query": "exact search term for youtube" } 
       - { "type": "link", "title": "...", "url": "https://..." }
 
-      IMPORTANT RULES:
-      1. For "video" blocks, ONLY provide a 'query'. Do not invent URLs.
-      2. Structure the lesson logically: Intro -> Concept -> Code -> Video -> Links -> Quiz.
-      3. Code blocks must have both 'language' and 'code' fields.
-      4. Ensure the JSON is well-formed without any extra text.
-      5. Code is not mandatory in every lesson. Only include if relevant.
-      6. The entire lesson content array should not exceed 1500 words.
-
       EXAMPLE OUTPUT:
       {
+        "_thought": "I will explain Loops using a real-world analogy of a factory line...",
         "title": "Lesson Title",
         "objectives": ["Obj 1", "Obj 2"],
         "content": [
           { "type": "heading", "text": "Introduction" },
           { "type": "paragraph", "text": "Concept explanation..." },
           { "type": "code", "language": "python", "code": "print('Hello')" },
-          { "type": "video", "query": "Python for beginners tutorial" },
+          { "type": "video", "query": "Python loops tutorial" },
           { "type": "mcq", "question": "What is X?", "options": ["A", "B"], "answer": 0, "explanation": "Reason." }
         ]
       }
@@ -112,7 +133,7 @@ export class LessonService {
       structuredLesson = await modelGateway.generateStructured(
         `${systemPrompt}\n\nUSER REQUEST: ${userPrompt}`,
         lessonResponseSchema,
-        TaskTier.LOGIC_REASONING,
+        TaskTier.CREATIVE_WRITING,
       );
 
       // ---------------------------------------------------------
@@ -133,7 +154,7 @@ export class LessonService {
               if (query) {
                 videoData = await youtubeService.searchVideo(query);
               }
-              console.log("YouTube Search Data:", videoData);
+              // console.log("YouTube Search Data:", videoData);
 
               if (videoData) {
                 return {
@@ -183,7 +204,7 @@ export class LessonService {
         structuredLesson.content = enrichedContent;
       }
 
-      console.log("Structured Lesson Content:", structuredLesson);
+      // console.log("Structured Lesson Content:", structuredLesson);
       // Save to Cache (Background)
       semanticCache
         .setCachedLesson(courseTitle, lesson.title, structuredLesson)
@@ -191,35 +212,28 @@ export class LessonService {
     }
 
     // ---------------------------------------------------------
-    // 5. TRANSACTIONAL SAVE & DEDUCT
+    // 5. SAVE & DEDUCT
     // ---------------------------------------------------------
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    const isDeducted = await creditService.deductCredits(userId, COST);
+    if (!isDeducted) throw new Error("Insufficient credits");
 
     try {
-      const user = await User.findById(userId).session(session);
-      // Double check balance inside lock
-      if (!user || user.credits < COST) {
-        throw new Error("Insufficient credits");
-      }
-
-      user.credits -= COST;
-      await user.save({ session });
-
       lesson.content = structuredLesson.content;
       lesson.objectives = structuredLesson.objectives;
       lesson.isEnriched = true;
 
-      await lesson.save({ session });
-      await session.commitTransaction();
+      await lesson.save();
 
       logger.info(`✅ Lesson generated & saved. Credits deducted: ${COST}`);
       return lesson;
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
+    } catch (saveError) {
+      // 🚨 SAFETY NET: If saving fails, REFUND the user immediately
+      logger.error(
+        "❌ Save failed after deduction. Refunding user...",
+        saveError,
+      );
+      await creditService.addCredits(userId, COST);
+      throw new Error("Failed to save lesson. Credits have been refunded.");
     }
   }
 
@@ -237,10 +251,6 @@ export class LessonService {
    * Pattern: Deduct -> Generate (with Retry) -> Save/Refund
    * Prevents DB locks during slow AI/Cloudinary calls.
    */
-  // ... (imports)
-
-  // ... (keep imports)
-
   async generateAudio(
     lessonId: string,
     userId: string,
@@ -280,22 +290,15 @@ export class LessonService {
     // ---------------------------------------------------------
     // PHASE 1: DEDUCT CREDITS
     // ---------------------------------------------------------
-    const deductSession = await mongoose.startSession();
-    deductSession.startTransaction();
+    const isDeducted = await creditService.deductCredits(userId, COST);
+    if (!isDeducted) throw new Error("Insufficient credits");
     try {
-      const user = await User.findById(userId).session(deductSession);
-      if (!user || user.credits < COST)
-        throw new Error(`Insufficient credits. Required: ${COST}`);
-
-      user.credits -= COST;
-      await user.save({ session: deductSession });
-      await deductSession.commitTransaction();
       logger.info(`💰 Deducted ${COST} credits for Audio`);
     } catch (err) {
-      await deductSession.abortTransaction();
-      throw err;
-    } finally {
-      deductSession.endSession();
+      // 🚨 SAFETY NET: If saving fails, REFUND the user immediately
+      logger.error("❌ Save failed after deduction. Refunding user...", err);
+      await creditService.addCredits(userId, COST);
+      throw new Error("Failed to generate audio. Credits have been refunded.");
     }
 
     // ---------------------------------------------------------

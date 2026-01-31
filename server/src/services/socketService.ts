@@ -1,6 +1,3 @@
-// src/services/socketService.ts
-// This service allows us to send messages to specific users via their userId.
-
 import { Server as HttpServer } from "http";
 import { Server, Socket } from "socket.io";
 import logger from "../utils/logger";
@@ -11,26 +8,44 @@ class SocketService {
   public init(httpServer: HttpServer) {
     this.io = new Server(httpServer, {
       cors: {
-        origin: "*", // Lock this down in production
+        origin: "*",
         methods: ["GET", "POST"],
       },
+      pingTimeout: 60000, // Increase tolerance
     });
 
     this.io.on("connection", (socket: Socket) => {
-      logger.info(`🔌 User connected: ${socket.id}`);
+      logger.info(`🔌 [Socket] Connected: ${socket.id}`);
 
-      // Allow frontend to join a "room" based on their User ID
+      // DEBUG: Log all incoming events
+      socket.onAny((event, ...args) => {
+        logger.info(`📨 [Socket In] Event: "${event}" | Data:`, args);
+      });
+
       socket.on("join_room", (userId: string) => {
-        socket.join(userId);
-        logger.info(`👤 Socket ${socket.id} joined room: ${userId}`);
+        if (!userId) {
+          logger.warn(`⚠️ [Socket] join_room with NULL userId`);
+          return;
+        }
+        const roomName = String(userId);
+        socket.join(roomName);
+        logger.info(`👤 [Socket] ${socket.id} JOINED room: "${userId}"`);
+
+        // Acknowledge (Helps frontend know it's connected)
+        socket.emit("room_joined", { room: userId });
+      });
+
+      socket.on("disconnect", (reason) => {
+        logger.info(`❌ [Socket] Disconnected: ${socket.id} (${reason})`);
       });
     });
   }
 
-  // ✅ The Magic Method: Call this from ANY worker
-  public emitToUser(userId: string, event: string, data: any) {
+  public emitToUser(userId: string | any, event: string, data: any) {
     if (this.io) {
-      this.io.to(userId).emit(event, data);
+      const roomName = String(userId); // 👈 CRITICAL FIX
+      // logger.info(`📡 Emitting "${event}" to Room: "${roomName}"`);
+      this.io.to(roomName).emit(event, data);
     } else {
       logger.warn("SocketService not initialized!");
     }

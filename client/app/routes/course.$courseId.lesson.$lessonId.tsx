@@ -35,6 +35,7 @@ import { LessonPDFExporter } from "~/features/lesson/components/LessonPDFExporte
 import { useAuthStore } from "~/store/authStore"; // 👈 Import Auth Store
 import { toaster } from "~/components/ui/toaster"; // 👈 Import Toaster
 import { useConfigStore } from "~/store/configStore";
+import { useSocketCredits } from "~/hooks/useSocketCredits";
 
 // Language Options
 const LANGUAGES = [
@@ -47,7 +48,7 @@ const LANGUAGES = [
   { value: "es", label: "Spanish" },
 ];
 
-// 👇 Define Costs
+// Define Costs
 
 export default function LessonPage() {
   const getCost = useConfigStore((state) => state.getCost);
@@ -93,8 +94,9 @@ export default function LessonPage() {
     generate(lessonId!, {
       onSuccess: () => {
         // Instant UI Update
-        if (user)
-          setUser({ ...user, credits: user.credits - COST_LESSON_CONTENT });
+        // if (user)
+        //   setUser({ ...user, credits: user.credits - COST_LESSON_CONTENT });
+        //
         toaster.create({ title: "Lesson content generated!", type: "success" });
       },
     });
@@ -116,7 +118,7 @@ export default function LessonPage() {
         {
           onSuccess: () => {
             // Instant UI Update
-            if (user) setUser({ ...user, credits: user.credits - cost });
+            // if (user) setUser({ ...user, credits: user.credits - cost });
             toaster.create({ title: "Audio generated!", type: "success" });
           },
         },
