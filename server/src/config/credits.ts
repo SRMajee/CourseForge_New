@@ -2,6 +2,7 @@ import { env } from "./env";
 
 export const CREDIT_COSTS = {
   CREATE_COURSE: env.COST_CREATE_COURSE,
+  CREATE_COURSE_PRO: env.COST_CREATE_COURSE,
   GENERATE_LESSON: env.COST_GENERATE_LESSON,
   GENERATE_AUDIO: env.COST_GENERATE_AUDIO,
   EXPORT_PDF: env.COST_EXPORT_PDF,
@@ -11,7 +12,12 @@ export const COST_MENU = [
   {
     action: "Create Course Outline",
     cost: CREDIT_COSTS.CREATE_COURSE,
-    desc: "Generates modules & lesson titles",
+    desc: "Generates modules & lesson titles Non Pro",
+  },
+  {
+    action: "Create Course Outline",
+    cost: CREDIT_COSTS.CREATE_COURSE_PRO,
+    desc: "Generates modules & lesson titles  Pro",
   },
   {
     action: "Generate Lesson Content",

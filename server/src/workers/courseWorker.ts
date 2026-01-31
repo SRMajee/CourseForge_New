@@ -9,12 +9,13 @@ import logger from "../utils/logger";
 export const courseWorker = new Worker<CourseGenerationJob>(
   COURSE_QUEUE_NAME,
   async (job: Job<CourseGenerationJob>) => {
-    const { userId, topic, action, userAnswers } = job.data;
+    const { userId, topic, action, userAnswers, mode } = job.data;
     let heartbeat: NodeJS.Timeout | null = null;
 
     try {
-      logger.info(`⚙️ [Worker] Job ${job.id} started for ${userId}`);
-
+      logger.info(
+        `⚙️ [Worker] Job ${job.id} started for ${userId} | Mode: ${mode || "standard"}`,
+      );
       // 1. Broadcast Setup
       const user = await User.findById(userId);
       const rooms = [userId];
@@ -76,8 +77,10 @@ export const courseWorker = new Worker<CourseGenerationJob>(
       // 3. Execute Service
       let result;
       if (action === "generate_outline") {
+        // ✅ UPDATE: Pass 'mode' to the service
         result = await courseService.generateCourse(userId, topic, {
           userAnswers,
+          mode,
         });
       }
 

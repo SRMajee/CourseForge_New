@@ -13,6 +13,7 @@ import { researchService } from "./ResearchService";
 import { creditService } from "./creditService"; // 👈 Import
 import { redisClient } from "../config/redis";
 import { clarificationService } from "./ClarificationService";
+import { imageService } from "./imageService";
 export class ClarificationNeededError extends Error {
   public data: any;
   constructor(data: any) {
@@ -21,7 +22,10 @@ export class ClarificationNeededError extends Error {
     this.data = data;
   }
 }
-
+export interface GenerateOptions {
+  userAnswers?: any;
+  mode?: "standard" | "pro"; // 👈 New Option
+}
 export class CourseService {
   /**
    * ⚡ NEW: Redis-Based Pre-flight Check
@@ -39,48 +43,79 @@ export class CourseService {
    * Removed internal Ambiguity Check. The Controller/Worker is responsible for that.
    * This prevents "ClarificationNeededError" from crashing background jobs.
    */
-  // ✅ UPDATED SIGNATURE: Accepts options with userAnswers
   async generateCourse(
     userId: string,
     topic: string,
-    options: { userAnswers?: any } = {},
+    options: GenerateOptions = {},
   ) {
-    const COST = CREDIT_COSTS.CREATE_COURSE;
-
-    // 1. Pre-flight Check
-    await this.validateBalance(userId, COST);
-
     const user = await User.findById(userId);
-    const isPro =
-      user?.planType === "PRO" || user?.subscriptionStatus === "active";
-    const planningTier = isPro
-      ? TaskTier.LOGIC_REASONING
-      : TaskTier.FAST_UTILITY;
+    if (!user) throw new Error("User not found");
 
-    logger.info(
-      `👤 User ${userId} is ${isPro ? "PRO" : "FREE"}. Tier: ${planningTier}`,
-    );
+    const requestedMode = options.mode || "standard";
+    const isUserPro =
+      user.planType === "PRO" || user.subscriptionStatus === "active";
 
-    // 2. Check Cache
-    // We append answers to key to ensure "Python (Beginner)" is cached differently than "Python (Expert)"
-    const cacheKey = options.userAnswers
-      ? `${topic}-${JSON.stringify(options.userAnswers)}`
-      : topic;
-    let syllabusData = await semanticCache.getCachedOutline(cacheKey);
+    // 2. Calculate Cost & Trial Logic
+    let cost = CREDIT_COSTS.CREATE_COURSE; // Default 50
+    let isTrialRun = false;
 
-    if (syllabusData) {
-      logger.info(`⚡ [Cache Hit] Serving cached content for: ${topic}`);
-    } else {
-      logger.info(`🐢 [Cache Miss] Starting generation for: ${topic}`);
+    if (requestedMode === "pro") {
+      if (isUserPro) {
+        // Pro User paying for Pro gen
+        cost = CREDIT_COSTS.CREATE_COURSE_PRO;
+      } else {
+        // Free User attempting Pro
+        if (!user.hasUsedProTrial) {
+          // 🎉 Activate Trial
+          isTrialRun = true;
+          cost = 0; // Freebie
+          logger.info(`✨ User ${userId} is using their One-Time PRO Trial.`);
+        } else {
+          // 🛑 Block access
+          throw new Error(
+            "Pro Mode requires a subscription. You have already used your free trial.",
+          );
+        }
+      }
     }
 
-    // 🛑 4. DEDUCT CREDITS (Before AI work)
-    // This prevents race conditions where they spend credits while AI is thinking.
-    const isDeducted = await creditService.deductCredits(userId, COST);
-    if (!isDeducted) throw new Error("Insufficient credits");
+    // 3. Determine AI Model Tier
+    // Pro Mode = DeepSeek/Llama 70B (Logic). Standard = Llama 8B (Fast).
+    const planningTier =
+      requestedMode === "pro"
+        ? TaskTier.LOGIC_REASONING
+        : TaskTier.FAST_UTILITY;
 
-    logger.info(`💰 Deducted ${COST} credits (Hold). Starting AI...`);
+    logger.info(
+      `👤 User ${userId} | Mode: ${requestedMode.toUpperCase()} | Tier: ${planningTier} | Cost: ${cost}`,
+    );
 
+    // 4. Check Cache (Include mode in key so Pro results aren't served to Standard users)
+    const cacheKey = `${topic}-${JSON.stringify(options.userAnswers || {})}-${requestedMode}`;
+    let syllabusData = await semanticCache.getCachedOutline(cacheKey);
+
+    // ✅ FIX: Transaction Logic moved OUTSIDE "if (!syllabusData)"
+    // We must charge the user/mark trial used regardless of Cache Hit or Miss.
+    if (isTrialRun) {
+      // Atomic Update: Ensure they haven't used it in a race condition
+      const updated = await User.findOneAndUpdate(
+        { _id: userId, hasUsedProTrial: false },
+        { $set: { hasUsedProTrial: true } },
+      );
+      if (!updated) {
+        throw new Error("Pro trial already used.");
+      }
+    } else {
+      // Standard Deduction
+      const isDeducted = await creditService.deductCredits(userId, cost);
+
+      // Log whether it was a cache hit or miss for debugging
+      logger.info(
+        `💰 Deducted ${cost} credits. Cache Hit: ${!!syllabusData}. Starting Process...`,
+      );
+
+      if (!isDeducted) throw new Error("Insufficient credits");
+    }
     try {
       // 5. Run AI Generation (If not cached)
       if (!syllabusData) {
@@ -145,14 +180,25 @@ export class CourseService {
           .setCachedOutline(cacheKey, syllabusData)
           .catch((e) => logger.error("Cache Write Error", e));
       }
-
+      const thumbnailUrl = await imageService.getCourseThumbnail(topic);
       // 6. Save to DB (Pure Persistence)
-      const course = await this.saveCourseToDb(userId, syllabusData);
+      const course = await this.saveCourseToDb(
+        userId,
+        syllabusData,
+        thumbnailUrl,
+        requestedMode,
+      );
       return course;
     } catch (error) {
       // 🚨 FAILURE: REFUND CREDITS
       logger.error("❌ Generation Failed. Refunding user...", error);
-      await creditService.addCredits(userId, COST);
+      if (isTrialRun) {
+        // Restore Trial
+        await User.findByIdAndUpdate(userId, { hasUsedProTrial: false });
+      } else {
+        // Refund Credits
+        await creditService.addCredits(userId, cost);
+      }
       throw error;
     }
   }
@@ -183,7 +229,12 @@ export class CourseService {
   /**
    * Helper: Pure DB Transaction (No Credit Logic)
    */
-  private async saveCourseToDb(userId: string, data: any) {
+  private async saveCourseToDb(
+    userId: string,
+    data: any,
+    thumbnailUrl: string,
+    mode: "standard" | "pro",
+  ) {
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -194,9 +245,14 @@ export class CourseService {
         description: data.description,
         tags: data.tags,
         modules: [],
+        // ⚡ NEW FIELDS
+        thumbnailUrl: thumbnailUrl,
+        generationMode: mode,
       });
+
       const savedCourse = await course.save({ session });
 
+      // ... (Keep existing Module/Lesson creation logic exactly as is) ...
       for (const modData of data.modules) {
         const newModule = new Module({
           course: savedCourse._id,
@@ -219,7 +275,6 @@ export class CourseService {
           savedModule.lessons = createdLessons.map((l) => l._id as any);
           await savedModule.save({ session });
         }
-
         savedCourse.modules.push(savedModule._id as any);
       }
 

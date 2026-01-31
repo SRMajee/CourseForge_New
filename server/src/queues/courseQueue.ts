@@ -7,11 +7,11 @@ export interface CourseGenerationJob {
   userId: string;
   topic: string;
   action: "generate_outline" | "generate_lesson";
-  
+
   // ✅ Phase 8 Updates:
-  userAnswers?: any;         // Stores the specific answers (Depth, Stack, Goal)
+  userAnswers?: any; // Stores the specific answers (Depth, Stack, Goal)
   skipClarification?: boolean; // Flag to bypass the ambiguity check in worker
-  
+  mode?: "standard" | "pro";
   metadata?: any; // For extra flags like 'pro_mode' later
 }
 

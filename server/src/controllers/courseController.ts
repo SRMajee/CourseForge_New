@@ -9,16 +9,20 @@ import { env } from "../config/env";
 import { socketService } from "../services/socketService";
 import { User } from "../models/User";
 import { codeExecutionService } from "../services/CodeExecutionService";
-
+import { CREDIT_COSTS } from "../config/credits"; // 👈 Add this
 /**
  * POST /api/v1/courses/outline
  * NOW ASYNCHRONOUS via Redis
  * Updated for Phase 8: Ambiguity Check
  */
+/**
+ * POST /api/v1/courses/outline
+ * NOW ASYNCHRONOUS via Redis
+ * Updated for Phase 1: Pro Mode, Trials & Dynamic Cost
+ */
 export const generateCourseOutline = async (req: Request, res: Response) => {
-  const COST = env.COST_CREATE_COURSE || 50;
   try {
-    const { topic, skipClarification, userAnswers } = req.body;
+    const { topic, skipClarification, userAnswers, mode } = req.body;
     // @ts-ignore
     const userId = req.user?._id;
 
@@ -26,27 +30,65 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Invalid Request" });
     }
 
-    await courseService.validateBalance(userId, COST);
+    // 1. Fetch User to determine Status & Trial Eligibility
     const user = await User.findById(userId).select(
-      "planType subscriptionStatus",
+      "planType subscriptionStatus hasUsedProTrial credits",
     );
+    if (!user) return res.status(404).json({ message: "User not found" });
+
     const isPro =
-      user?.planType === "PRO" || user?.subscriptionStatus === "active";
+      user.planType === "PRO" || user.subscriptionStatus === "active";
+    const requestedMode = mode === "pro" ? "pro" : "standard";
+
+    // 2. Dynamic Cost Calculation (Pre-flight Check)
+    let requiredCredits = CREDIT_COSTS.CREATE_COURSE; // Default Standard (50)
+
+    if (requestedMode === "pro") {
+      if (isPro) {
+        requiredCredits = CREDIT_COSTS.CREATE_COURSE_PRO; // Pro User (100)
+      } else {
+        // Free User attempting Pro
+        if (!user.hasUsedProTrial) {
+          requiredCredits = 0; // 🎉 Free Trial (Cost is 0)
+        } else {
+          // 🛑 Block access if trial already used
+          return res.status(403).json({
+            message:
+              "Pro Mode requires a subscription. You have already used your free trial.",
+          });
+        }
+      }
+    }
+
+    // 3. Validate Balance (Fast Fail)
+    // We check against 'requiredCredits' which might be 0 for a trial
+    if (user.credits < requiredCredits) {
+      return res.status(402).json({
+        message: `Insufficient credits. Required: ${requiredCredits}, Available: ${user.credits}`,
+      });
+    }
+
     // ---------------------------------------------------------
     // 🚦 PHASE 8: Synchronous Ambiguity Check (PRO EXCLUSIVE)
     // ---------------------------------------------------------
-    // Only run clarification if User is PRO.
-    // Free users skip this and go straight to generation (General Mode).
     if (isPro && !skipClarification) {
       logger.info(`🤔 Checking ambiguity for: "${topic}" (User is PRO)`);
       const analysis = await clarificationService.analyzeTopic(topic);
       if (analysis.isAmbiguous && analysis.questions?.length > 0) {
         const jobId = `job:${userId}:${Date.now()}`;
+
+        // ✅ SAVE MODE TO REDIS (So we don't lose it on resume)
         await redisClient.setex(
           jobId,
           3600,
-          JSON.stringify({ userId, topic, timestamp: Date.now() }),
+          JSON.stringify({
+            userId,
+            topic,
+            mode: requestedMode, // 👈 Persistent Mode
+            timestamp: Date.now(),
+          }),
         );
+
         return res.status(422).json({
           code: "CLARIFICATION_NEEDED",
           message: "Clarification Needed",
@@ -55,12 +97,14 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
       }
     }
 
+    // 4. Queue Job (Pass Mode to Worker)
     const job = await courseQueue.add("generate_outline", {
       userId,
       topic,
       action: "generate_outline",
       userAnswers: userAnswers || null,
       skipClarification: true,
+      mode: requestedMode, // 👈 Pass to Worker
     });
 
     return res.status(202).json({
@@ -109,7 +153,6 @@ export const resumeCourse = async (req: Request, res: Response) => {
     await redisClient.expire(jobId, 5); // Short expire to prevent reuse
 
     // 2. Robust Answer Parsing (Fixes "Missing Answers")
-    // Ensures {0: "A", 1: "B"} or ["A", "B"] both map to {q1: "A", q2: "B"}
     let processedAnswers: Record<string, any> = {};
 
     if (Array.isArray(answers)) {
@@ -118,7 +161,6 @@ export const resumeCourse = async (req: Request, res: Response) => {
       });
     } else if (typeof answers === "object" && answers !== null) {
       Object.keys(answers).forEach((key, idx) => {
-        // If key is "q1", keep it. If "0", map to "q1".
         const newKey = key.startsWith("q") ? key : `q${idx + 1}`;
         processedAnswers[newKey] = answers[key];
       });
@@ -128,16 +170,19 @@ export const resumeCourse = async (req: Request, res: Response) => {
       `✅ [Resume] Normalized Answers: ${JSON.stringify(processedAnswers)}`,
     );
 
-    // 3. Queue Job
+    // 3. Queue Job (Restore Mode from State)
     const job = await courseQueue.add("generate_outline", {
       userId,
       topic: state.topic,
       action: "generate_outline",
       userAnswers: processedAnswers,
       skipClarification: true,
+      mode: state.mode || "standard", // 👈 Restore Mode
     });
 
-    logger.info(`🚀 [Resume] Job Queued: ${job.id}`);
+    logger.info(
+      `🚀 [Resume] Job Queued: ${job.id} | Mode: ${state.mode || "standard"}`,
+    );
 
     // 4. ACKNOWLEDGE via Socket (Unsticks UI)
     socketService.emitToUser(userId, "resume_processed", { success: true });

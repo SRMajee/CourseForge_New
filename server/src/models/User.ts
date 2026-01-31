@@ -25,6 +25,10 @@ export interface IUser extends Document {
   subscriptionStatus: SubscriptionStatus;
   currentPeriodEnd?: Date;
   planType: PlanType;
+  hasUsedProTrial: boolean;
+  preferences: {
+    defaultProMode: boolean;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +62,10 @@ const userSchema = new Schema<IUser>(
       type: String,
       enum: PLAN_TYPES, // ✅ Uses the relaxed list
       default: "FREE",
+    },
+    hasUsedProTrial: { type: Boolean, default: false },
+    preferences: {
+      defaultProMode: { type: Boolean, default: false },
     },
   },
   { timestamps: true },
