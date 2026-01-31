@@ -27,7 +27,10 @@ export const deleteCourse = async (courseId: string) => {
   const { data } = await api.delete(`/courses/${courseId}`);
   return data;
 };
-
+export const executeCode = async (language: string, code: string) => {
+  const { data } = await api.post("/courses/execute", { language, code });
+  return data;
+};
 export const deleteModule = async (moduleId: string) => {
   const { data } = await api.delete(`/courses/modules/${moduleId}`);
   return data;
@@ -35,6 +38,20 @@ export const deleteModule = async (moduleId: string) => {
 
 export const deleteLesson = async (lessonId: string) => {
   const { data } = await api.delete(`/courses/lessons/${lessonId}`);
+  return data;
+};
+// ✅ NEW: Accept output argument
+export const saveCode = async (
+  lessonId: string,
+  blockIndex: number,
+  code: string,
+  output?: string,
+) => {
+  const { data } = await api.patch(`/courses/lessons/${lessonId}/code`, {
+    blockIndex,
+    code,
+    output, // 👈 Send output to backend
+  });
   return data;
 };
 export class CourseService {
@@ -45,4 +62,6 @@ export class CourseService {
   static deleteModule = deleteModule;
   static deleteLesson = deleteLesson;
   static deductPDFCredits = deductPDFCredits;
+  static executeCode = executeCode;
+  static saveCode = saveCode;
 }

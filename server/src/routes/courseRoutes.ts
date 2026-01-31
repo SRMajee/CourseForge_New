@@ -10,6 +10,8 @@ import {
   deleteLesson,
   resumeCourse,
   downloadLessonPDF,
+  executeCode,
+  saveLessonCode,
 } from "../controllers/courseController";
 import { get } from "node:http";
 
@@ -34,4 +36,6 @@ router.get("/lessons/:lessonId", getLesson);
 router.delete("/:courseId", deleteCourse);
 router.delete("/modules/:moduleId", deleteModule);
 router.delete("/lessons/:lessonId", deleteLesson);
+router.post("/execute", executeCode);
+router.patch("/lessons/:lessonId/code", saveLessonCode);
 export default router;

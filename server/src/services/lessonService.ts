@@ -380,6 +380,37 @@ export class LessonService {
       creditsDeducted: COST,
       remainingCredits: finalUser?.credits || 0,
     };
+  } // ✅ NEW: Save user's edited code
+  async updateCodeBlock(
+    lessonId: string,
+    userId: string,
+    blockIndex: number,
+    newCode: string,
+    newOutput?: string,
+  ) {
+    const lesson = await Lesson.findById(lessonId);
+    if (!lesson) throw new Error("Lesson not found");
+
+    if (!lesson.content || !lesson.content[blockIndex]) {
+      throw new Error("Invalid block index");
+    }
+
+    // ✅ NEW: Prepare update object for both Code AND Output
+    const updatePathCode = `content.${blockIndex}.code`;
+    const updatePathOutput = `content.${blockIndex}.output`;
+
+    const updateData: any = {
+      [updatePathCode]: newCode,
+    };
+
+    // Only save output if it exists (so we don't overwrite with null if not intended)
+    if (newOutput !== undefined) {
+      updateData[updatePathOutput] = newOutput;
+    }
+
+    await Lesson.updateOne({ _id: lessonId }, { $set: updateData });
+
+    return { success: true };
   }
   async updateLessonContent(
     lessonId: string,

@@ -22,6 +22,7 @@ import {
   FaBookOpen, // 👈 Added for Reading Links
 } from "react-icons/fa";
 import { useState } from "react";
+import { CodeSandbox } from "./CodeSandbox";
 
 // --- Sub-Component for Interactive MCQs ---
 const MCQBlock = ({ block }: { block: any }) => {
@@ -218,7 +219,15 @@ const MCQBlock = ({ block }: { block: any }) => {
 };
 
 // --- Main Block Renderer ---
-const BlockRenderer = ({ block }: { block: any }) => {
+const BlockRenderer = ({
+  index,
+  block,
+  lessonId,
+}: {
+  index: number;
+  block: any;
+  lessonId: string;
+}) => {
   switch (block.type) {
     case "heading":
       return (
@@ -250,47 +259,16 @@ const BlockRenderer = ({ block }: { block: any }) => {
 
     case "code":
       return (
-        <Box
-          my={6}
-          borderRadius="lg"
-          overflow="hidden"
-          borderWidth="1px"
-          borderColor="border"
-          boxShadow="sm"
-        >
-          <HStack
-            bg="bg.subtle"
-            px={4}
-            py={2}
-            justify="space-between"
-            borderBottomWidth="1px"
-            borderColor="border"
-          >
-            <Text
-              color="fg.muted"
-              fontSize="xs"
-              fontWeight="bold"
-              textTransform="uppercase"
-              letterSpacing="wider"
-            >
-              {block.language || "Code"}
-            </Text>
-          </HStack>
-          <Box bg="#0d1117" p={5} overflowX="auto">
-            <Code
-              variant="plain"
-              color="gray.100"
-              whiteSpace="pre"
-              fontFamily="'Fira Code', monospace"
-              fontSize="sm"
-            >
-              {block.code || block.text}
-            </Code>
-          </Box>
-        </Box>
+        <CodeSandbox
+          key={index}
+          lessonId={lessonId} //  Pass Lesson ID
+          blockIndex={index} //  Pass Index
+          initialCode={block.code || block.text || ""}
+          language={block.language || "javascript"}
+        />
       );
 
-    // 👇 NEW: Link / Reading Block
+    //  NEW: Link / Reading Block
     case "link":
       return (
         <Link
@@ -420,13 +398,19 @@ const BlockRenderer = ({ block }: { block: any }) => {
   }
 };
 
-export const LessonContentRenderer = ({ content }: { content: any[] }) => {
+export const LessonContentRenderer = ({
+  content,
+  lessonId,
+}: {
+  content: any[];
+  lessonId: string;
+}) => {
   if (!content || !Array.isArray(content)) return null;
 
   return (
     <Box maxW="3xl" mx="auto" px={1}>
       {content.map((block, index) => (
-        <BlockRenderer key={index} block={block} />
+        <BlockRenderer index={index} block={block} lessonId={lessonId} />
       ))}
     </Box>
   );

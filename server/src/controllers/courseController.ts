@@ -8,6 +8,7 @@ import { redisClient } from "../config/redis"; // 👈 Phase 8
 import { env } from "../config/env";
 import { socketService } from "../services/socketService";
 import { User } from "../models/User";
+import { codeExecutionService } from "../services/CodeExecutionService";
 
 /**
  * POST /api/v1/courses/outline
@@ -233,6 +234,69 @@ export const getCourse = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+/**
+ * PATCH /api/v1/courses/lessons/:lessonId/code
+ * ✅ NEW: Save persistent code
+ */
+export const saveLessonCode = async (req: Request, res: Response) => {
+  try {
+    const { lessonId } = req.params;
+    const { blockIndex, code, output } = req.body; // 👈 Get output from body
+    // @ts-ignore
+    const userId = req.user?._id;
+
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // Pass output to service
+    await lessonService.updateCodeBlock(
+      lessonId,
+      userId,
+      blockIndex,
+      code,
+      output,
+    );
+
+    return res.json({
+      success: true,
+      message: "Code & Output saved successfully",
+    });
+  } catch (error: any) {
+    logger.error("Save Code Error:", error);
+    return res.status(500).json({ message: "Failed to save code" });
+  }
+};
+/**
+ * POST /api/v1/courses/execute
+ * Executes code via CodeExecutionService
+ */
+export const executeCode = async (req: Request, res: Response) => {
+  try {
+    const { language, code } = req.body;
+    // @ts-ignore
+    const userId = req.user?._id;
+
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // Call Service
+    const result = await codeExecutionService.execute(language, code);
+
+    // Return Result (Service handles success/failure formatting)
+    return res.json(result);
+  } catch (error: any) {
+    logger.error("Controller Execution Error:", error.message);
+
+    // Handle specific errors
+    if (error.message.includes("not supported")) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(500).json({
+      message: "Execution failed",
+      error: error.message,
+    });
+  }
+};
+
 // ✅ UPDATED: Extracts page/limit for pagination
 export const getAllCourses = async (req: Request, res: Response) => {
   try {

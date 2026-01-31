@@ -4,6 +4,7 @@ import { modelGateway, TaskTier } from "./ModelGateway";
 import logger from "../utils/logger";
 import { z } from "zod";
 import { env } from "../config/env";
+import axios from 'axios';
 
 // Schema for the AI Fixer response
 const fixedCodeSchema = z.object({
@@ -15,6 +16,66 @@ const fixedCodeSchema = z.object({
 });
 
 export class CodeExecutionService {
+  private runtimeMap: Record<string, { language: string; version: string }> = {
+    javascript: { language: "javascript", version: "18.15.0" },
+    js: { language: "javascript", version: "18.15.0" },
+    python: { language: "python", version: "3.10.0" },
+    py: { language: "python", version: "3.10.0" },
+    typescript: { language: "typescript", version: "5.0.3" },
+    ts: { language: "typescript", version: "5.0.3" },
+    java: { language: "java", version: "15.0.2" },
+    c: { language: "c", version: "10.2.0" },
+    cpp: { language: "c++", version: "10.2.0" },
+  };
+
+  /**
+   * Executes code using the Piston API
+   */
+  async execute(language: string, code: string) {
+    const runtime = this.runtimeMap[language.toLowerCase()];
+
+    if (!runtime) {
+      throw new Error(`Language '${language}' is not supported yet.`);
+    }
+
+    logger.info(`🚀 Sending ${language} code to Piston execution engine...`);
+
+    try {
+      const response = await axios.post(
+        "https://emkc.org/api/v2/piston/execute",
+        {
+          language: runtime.language,
+          version: runtime.version,
+          files: [
+            {
+              content: code,
+            },
+          ],
+        },
+      );
+
+      const { run } = response.data;
+      const output =
+        run.output || ">> No output returned (Did you print anything?)";
+
+      // Return a structured result
+      if (run.stderr) {
+        return {
+          success: false,
+          output: `❌ Error:\n${run.stderr}`,
+        };
+      }
+
+      return {
+        success: true,
+        output: output,
+      };
+    } catch (error: any) {
+      logger.error("Piston Execution Error:", error.message);
+      // Re-throw generic error to hide implementation details from controller if needed
+      throw new Error("Execution service unavailable");
+    }
+  }
   /**
    * Main entry point: Verify and Fix a code block
    * Currently optimized for Python, as E2B's CodeInterpreter specializes in it.

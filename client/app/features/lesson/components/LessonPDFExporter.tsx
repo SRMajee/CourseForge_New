@@ -368,6 +368,8 @@ export const LessonPDFExporter = ({
       }
 
       // 4. CODE BLOCKS
+      // ... inside your block rendering map function ...
+
       if (block.type === "code" || block.tag === "code") {
         return (
           <div key={index} className={blockClass}>
@@ -376,31 +378,65 @@ export const LessonPDFExporter = ({
                 backgroundColor: "#1a202c",
                 color: "#e2e8f0",
                 border: "1px solid #2d3748",
-                padding: "15px",
                 borderRadius: "8px",
                 marginBottom: "20px",
                 fontFamily: '"Courier New", Courier, monospace',
                 fontSize: "12px",
-                whiteSpace: "pre-wrap",
-                overflowX: "hidden",
+                overflow: "hidden", // Ensure content stays inside
               }}
             >
+              {/* Code Header (Language) */}
               {block.language && (
                 <div
                   style={{
-                    borderBottom: "1px solid #4a5568",
-                    paddingBottom: "5px",
-                    marginBottom: "10px",
-                    color: "#63b3ed",
+                    backgroundColor: "#2d3748",
+                    padding: "5px 15px",
+                    color: "#a0aec0",
                     fontSize: "10px",
                     fontWeight: "bold",
                     textTransform: "uppercase",
+                    borderBottom: "1px solid #4a5568",
                   }}
                 >
                   {block.language}
                 </div>
               )}
-              <code>{block.code || blockText}</code>
+
+              {/* The Source Code */}
+              <div style={{ padding: "15px", whiteSpace: "pre-wrap" }}>
+                <code>{block.code || block.text}</code>
+              </div>
+
+              {/* ✅ NEW: The Output Section (Only renders if output exists) */}
+              {block.output && (
+                <div
+                  style={{
+                    borderTop: "1px solid #4a5568",
+                    backgroundColor: "#000000", // Darker black for terminal
+                    padding: "15px",
+                  }}
+                >
+                  <div
+                    style={{
+                      color: "#68d391", // Green terminal text
+                      fontSize: "10px",
+                      fontWeight: "bold",
+                      marginBottom: "5px",
+                    }}
+                  >
+                    &gt; TERMINAL OUTPUT:
+                  </div>
+                  <div
+                    style={{
+                      color: "#e2e8f0",
+                      whiteSpace: "pre-wrap",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {block.output}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );

@@ -298,7 +298,10 @@ export default function LessonPage() {
             )}
 
             {/* 3. Main Content */}
-            <LessonContentRenderer content={lesson.content} />
+            <LessonContentRenderer
+              content={lesson.content}
+              lessonId={lessonId!}
+            />
 
             {/* 4. Audio Section */}
             <Box
