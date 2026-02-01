@@ -3,7 +3,7 @@ import { authController } from "../controllers/authController";
 import { attachUser } from "../middleware/attachUser";
 import { checkJwt } from "../middleware/authMiddleware";
 
-console.log("✅ LOADED: authRoutes.ts (The correct file is running!)");
+// console.log("✅ LOADED: authRoutes.ts (The correct file is running!)");
 
 const router = express.Router();
 
