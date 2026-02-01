@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { redisClient } from "../config/redis";
 import { env } from "../config/env";
-import { CREDIT_COSTS } from "../config/credits"; // Ensure this imports your backend constants
+import { CREDIT_COSTS, COST_MENU } from "../config/credits"; // Ensure this imports your backend constants
 import { CREDIT_PACKS, SUBSCRIPTION_PLANS } from "../config/stripe";
 
 const CONFIG_CACHE_KEY = "app:global_config";
@@ -24,6 +24,7 @@ export const getAppConfig = async (req: Request, res: Response) => {
         exportPdf: CREDIT_COSTS.EXPORT_PDF,
         regenerate: 15, // If this is hardcoded, move it to env/constants
       },
+      costMenu: COST_MENU,
       pricing: {
         topUp: {
           price: env.PRICE_TOPUP_INR,

@@ -12,7 +12,7 @@ export const useGenerateLesson = (courseId?: string) => {
   return useMutation({
     mutationFn: (lessonId: string) => generateLessonContent(lessonId),
     onSuccess: () => {
-      toaster.create({ title: "Lesson Generated!", type: "success" });
+      // toaster.create({ title: "Lesson Generated!", type: "success" });
       if (courseId) {
         queryClient.invalidateQueries({ queryKey: ["course", courseId] });
       }

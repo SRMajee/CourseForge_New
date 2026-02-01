@@ -194,13 +194,13 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
                             }}
                             transition="all 0.2s"
                           >
-                            {!isActive && (
+                            {/* {!isActive && (
                               <Icon fontSize="xs" opacity={0.5}>
                                 <FaComment />
                               </Icon>
-                            )}
+                            )} */}
                             {!isCollapsed && (
-                              <Text fontSize="sm" truncate>
+                              <Text fontSize="sm" lineClamp={1}>
                                 {course.title}
                               </Text>
                             )}

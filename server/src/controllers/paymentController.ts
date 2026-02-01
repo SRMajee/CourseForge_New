@@ -92,8 +92,8 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
       line_items: [{ price: priceId, quantity: 1 }],
       mode: mode as any,
       metadata: metadata,
-      success_url: `${env.CLIENT_URL}/dashboard?payment=success=true`,
-      cancel_url: `${env.CLIENT_URL}/settings?payment=cancelled=true`,
+      success_url: `${baseUrl}?payment=success=true`,
+      cancel_url: `${baseUrl}?payment=cancelled=true`,
     });
 
     res.json({ url: session.url });

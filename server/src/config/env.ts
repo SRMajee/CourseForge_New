@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { z } from "zod";
+import { COST_MENU } from "./credits";
 
 // Load .env file
 dotenv.config();
@@ -38,11 +39,16 @@ const envSchema = z.object({
   GROQ_API_KEY: z.string().min(1, "Groq API Key is required"),
   TAVILY_API_KEY: z.string().min(1, "Tavily API Key is required"),
   // 👇 BUSINESS LOGIC (Automatically transforms "10" -> 10)
-  COST_CREATE_COURSE: z.string().transform(Number).default("10"),
-  COST_GENERATE_LESSON: z.string().transform(Number).default("5"),
+  COST_CREATE_COURSE: z.string().transform(Number).default("50"),
+  COST_GENERATE_LESSON: z.string().transform(Number).default("35"),
   COST_GENERATE_AUDIO: z.string().transform(Number).default("15"),
-  COST_EXPORT_PDF: z.string().transform(Number).default("5"),
-  COST_CREATE_COURSE_PRO: z.string().transform(Number).default("20"),
+  COST_EXPORT_PDF: z.string().transform(Number).default("15"),
+  COST_CREATE_COURSE_PRO: z.string().transform(Number).default("100"),
+  COST_REGENERATE_COURSE: z.string().transform(Number).default("25"),
+  COST_REGENERATE_COURSE_PRO: z.string().transform(Number).default("75"),
+  COST_REGENERATE_LESSON: z.string().transform(Number).default("15"),
+  COST_REGENERATE_LESSON_PRO: z.string().transform(Number).default("25"),
+
   // 👇 STRIPE PRODUCT CONFIG
   STRIPE_PRICE_ID_TOPUP: z.string().min(1, "Topup Price ID missing"),
   STRIPE_PRICE_ID_PRO: z.string().min(1, "Pro Price ID missing"),

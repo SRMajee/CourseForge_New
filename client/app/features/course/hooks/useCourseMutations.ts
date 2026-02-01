@@ -20,12 +20,12 @@ export const useGenerateCourseOutline = () => {
       return data;
     },
     onError: (error: any) => {
-      toaster.create({
-        title: "Generation Failed",
-        description:
-          error.response?.data?.message || "Could not start course generation.",
-        type: "error",
-      });
+      // toaster.create({
+      //   title: "Generation Failed",
+      //   description:
+      //     error.response?.data?.message || "Could not start course generation.",
+      //   type: "error",
+      // });
     },
     // We don't invalidate queries yet because the course isn't ready.
     // The Socket event will tell us when to refresh.

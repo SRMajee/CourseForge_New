@@ -8,11 +8,7 @@ import {
 export default [
   index("routes/home.tsx"),
 
-  // 1. Auth Group (Uses Auth Layout)
-  layout("routes/auth_layout.tsx", [
-    route("login", "routes/login.tsx"),
-    route("signup", "routes/signup.tsx"),
-  ]),
+
 
   // 2. App Group (Uses App Layout)
   layout("routes/layout.tsx", [

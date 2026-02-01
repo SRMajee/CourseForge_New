@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { api } from "~/services/api";
 
-interface AppConfig {
+export interface AppConfig {
   costs: {
     createCourse: number;
     generateLesson: number;
@@ -10,6 +10,12 @@ interface AppConfig {
     exportPdf: number;
     createCoursePro: number;
   };
+  // ✅ New Field: Syncs with backend COST_MENU
+  costMenu: {
+    action: string;
+    cost: number;
+    desc: string;
+  }[];
   pricing: {
     topUp: { price: number; credits: number; label: string };
     pro: { price: number; credits: number; label: string };
@@ -24,7 +30,7 @@ interface ConfigState {
 }
 
 // Default fallback values (just in case API fails)
-const DEFAULTS = {
+const DEFAULTS: AppConfig = {
   costs: {
     createCourse: 50,
     generateLesson: 35,
@@ -32,6 +38,8 @@ const DEFAULTS = {
     exportPdf: 15,
     createCoursePro: 100,
   },
+  // ✅ FIX: Added default to satisfy AppConfig interface
+  costMenu: [],
   pricing: {
     topUp: { price: 400, credits: 300, label: "Top Up" },
     pro: { price: 999, credits: 1000, label: "Pro" },

@@ -39,7 +39,7 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
     const isPro =
       user.planType === "PRO" || user.subscriptionStatus === "active";
     const requestedMode = mode === "pro" ? "pro" : "standard";
-
+    let isTrial = false;
     // 2. Dynamic Cost Calculation (Pre-flight Check)
     let requiredCredits = CREDIT_COSTS.CREATE_COURSE; // Default Standard (50)
 
@@ -50,6 +50,7 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
         // Free User attempting Pro
         if (!user.hasUsedProTrial) {
           requiredCredits = 0; // 🎉 Free Trial (Cost is 0)
+          isTrial = true;
         } else {
           // 🛑 Block access if trial already used
           return res.status(403).json({
@@ -71,7 +72,7 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
     // ---------------------------------------------------------
     // 🚦 PHASE 8: Synchronous Ambiguity Check (PRO EXCLUSIVE)
     // ---------------------------------------------------------
-    if (isPro && !skipClarification && mode === "pro") {
+    if ((isTrial || isPro) && !skipClarification && mode === "pro") {
       logger.info(`🤔 Checking ambiguity for: "${topic}" (User is PRO)`);
       const analysis = await clarificationService.analyzeTopic(topic);
       if (analysis.isAmbiguous && analysis.questions?.length > 0) {

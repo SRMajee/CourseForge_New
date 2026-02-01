@@ -17,6 +17,10 @@ import { useCourses } from "~/features/course/hooks/useCourses";
 import { CourseCard } from "~/features/course/components/CourseCard";
 import { FaSearch } from "react-icons/fa";
 import { CreateCourseModal } from "~/features/course/components/CreateCourseModal";
+import type { Route } from "./+types/dashboard";
+export function meta({}: Route.MetaArgs) {
+  return [{ title: "My Library | CourseForge" }];
+}
 
 export default function MyCourses() {
   const [page, setPage] = useState(1);
@@ -24,7 +28,7 @@ export default function MyCourses() {
   const [allCourses, setAllCourses] = useState<any[]>([]);
   const [isModalOpen, setModalOpen] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-
+  const [isDeleteOpen, setDeleteOpen] = useState(false);
   // Infinite Scroll Hook
   const { ref, inView } = useInView();
 

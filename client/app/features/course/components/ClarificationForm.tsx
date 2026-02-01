@@ -106,6 +106,9 @@ export const ClarificationForm = ({
   };
 
   const finishSequence = () => {
+    // ✅ Fix: Increment step to length so (currentStep < questions.length) becomes false
+    setCurrentStep(questions.length);
+
     setIsTyping(false);
     setHistory((prev) => [
       ...prev,

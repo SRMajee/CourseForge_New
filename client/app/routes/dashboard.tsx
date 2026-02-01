@@ -67,8 +67,8 @@ export default function Dashboard() {
             setViewState("generating");
           }
         },
-        onError: () =>
-          toaster.create({ title: "Failed to start", type: "error" }),
+        // onError: () =>
+        //   toaster.create({ title: "Failed to start", type: "error" }),
       },
     );
   };

@@ -22,12 +22,15 @@ import { toaster } from "~/components/ui/toaster";
 import { TopUpModal } from "~/features/payment/components/TopUpModal";
 import { FaCoins, FaInfoCircle, FaCheckCircle, FaCrown } from "react-icons/fa";
 import { ManageSubscriptionModal } from "~/features/subscription/components/ManageSubscriptionModal";
-
+import type { Route } from "./+types/dashboard";
+export function meta({}: Route.MetaArgs) {
+  return [{ title: "Settings | CourseForge" }];
+}
 export default function Settings() {
   const { user: auth0User, isLoading: isAuthLoading } = useAuth0();
   const { user: dbUser, setUser } = useAuthStore();
   const { config, isLoading: isConfigLoading } = useConfigStore();
-
+  console.log("Config in Settings:", config);
   const [name, setName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isTopUpOpen, setTopUpOpen] = useState(false);
@@ -42,29 +45,6 @@ export default function Settings() {
   const isPro =
     dbUser?.planType?.toUpperCase() === "PRO" ||
     dbUser?.subscriptionStatus === "active";
-
-  const COST_MENU = [
-    {
-      action: "Create Course Outline",
-      cost: config?.costs.createCourse || "...",
-      desc: "Generates modules & lesson titles",
-    },
-    {
-      action: "Generate Lesson Content",
-      cost: config?.costs.generateLesson || "...",
-      desc: "AI writes the full lesson text",
-    },
-    {
-      action: "Generate Audio Summary",
-      cost: config?.costs.generateAudio || "...",
-      desc: "High-quality Neural TTS audio",
-    },
-    {
-      action: "Export PDF",
-      cost: config?.costs.exportPdf || "...",
-      desc: "Downloadable course document",
-    },
-  ];
 
   const handleSave = async () => {
     if (!name.trim()) return;
@@ -306,7 +286,7 @@ export default function Settings() {
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {COST_MENU.map((item) => (
+              {(config?.costMenu || []).map((item: any) => (
                 <Table.Row
                   key={item.action}
                   bg="transparent"

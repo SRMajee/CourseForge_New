@@ -10,7 +10,14 @@ import {
   Switch,
   Icon,
 } from "@chakra-ui/react";
-import { FaArrowRight, FaMagic, FaGem, FaLock, FaCoins } from "react-icons/fa";
+import {
+  FaArrowRight,
+  FaMagic,
+  FaGem,
+  FaLock,
+  FaCoins,
+  FaExclamationCircle, // ✅ Added
+} from "react-icons/fa";
 import { useAuthStore } from "~/store/authStore";
 import { useConfigStore } from "~/store/configStore";
 
@@ -44,6 +51,10 @@ export const HeroInput = ({
       ? getCost("createCoursePro")
       : 0
     : getCost("createCourse");
+
+  // ✅ Affordability Logic
+  const credits = user?.credits || 0;
+  const canAfford = credits >= COST;
 
   // Auto-grow logic
   useEffect(() => {
@@ -83,7 +94,6 @@ export const HeroInput = ({
         zIndex={1}
         w="full"
         borderRadius="3xl"
-        // ✅ APPLE LIQUID GLASS TEXTURE
         bg="rgba(255, 255, 255, 0.6)"
         _dark={{
           bg: "rgba(30, 30, 30, 0.6)",
@@ -95,7 +105,11 @@ export const HeroInput = ({
         ringColor="rgba(255, 255, 255, 0.4)"
         transition="all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)"
         _focusWithin={{
-          ringColor: isProMode ? "purple.400" : "blue.400",
+          ringColor: !canAfford
+            ? "red.400" // ✅ Red ring on error
+            : isProMode
+              ? "purple.400"
+              : "blue.400",
           transform: "scale(1.005)",
           shadow: isProMode
             ? "0 15px 40px -10px rgba(168, 85, 247, 0.3)"
@@ -137,8 +151,8 @@ export const HeroInput = ({
 
           <IconButton
             aria-label="Generate"
-            colorPalette={isProMode ? "purple" : "blue"}
-            disabled={!topic.trim() || isLoading}
+            colorPalette={!canAfford ? "red" : isProMode ? "purple" : "blue"}
+            disabled={!topic.trim() || isLoading || !canAfford} // ✅ Disabled if broke
             onClick={handleSubmit}
             rounded="full"
             size="md"
@@ -150,6 +164,8 @@ export const HeroInput = ({
           >
             {isLoading ? (
               <FaMagic className="animate-spin" />
+            ) : !canAfford ? (
+              <FaExclamationCircle /> // ✅ Error Icon
             ) : (
               <FaArrowRight />
             )}
@@ -215,22 +231,39 @@ export const HeroInput = ({
             </HStack>
           )}
 
-          {/* ✅ Cost Badge moved to right end */}
-          <Badge
-            variant="surface"
-            colorPalette={isProMode ? "purple" : "blue"}
-            size="sm"
-            rounded="full"
-            px={3}
-            bg={isProMode ? "purple.500/10" : "blue.500/10"}
-            borderColor={isProMode ? "purple.500/20" : "blue.500/20"}
-            borderWidth="1px"
-          >
-            <HStack gap={1}>
-              <FaCoins size={10} />
-              <Text>{COST} Credits</Text>
-            </HStack>
-          </Badge>
+          {/* ✅ Cost Badge / Error Badge */}
+          {!canAfford ? (
+            <Badge
+              variant="solid"
+              colorPalette="red"
+              size="sm"
+              rounded="full"
+              px={3}
+              bg="red.500"
+              shadow="md"
+            >
+              <HStack gap={1}>
+                <FaExclamationCircle size={12} />
+                <Text fontWeight="bold">Not Enough Credits</Text>
+              </HStack>
+            </Badge>
+          ) : (
+            <Badge
+              variant="surface"
+              colorPalette={isProMode ? "purple" : "blue"}
+              size="sm"
+              rounded="full"
+              px={3}
+              bg={isProMode ? "purple.500/10" : "blue.500/10"}
+              borderColor={isProMode ? "purple.500/20" : "blue.500/20"}
+              borderWidth="1px"
+            >
+              <HStack gap={1}>
+                <FaCoins size={10} />
+                <Text>{COST} Credits</Text>
+              </HStack>
+            </Badge>
+          )}
         </HStack>
       </HStack>
     </VStack>

@@ -31,12 +31,13 @@ export interface ILesson extends Document {
 
   isEnriched: boolean;
   audioUrls?: Record<string, string>;
-
+  generationMode: "standard" | "pro";
   // ✅ NEW: History for Refinement
   history: Array<{
     timestamp: Date;
     instruction: string;
     content: any[]; // Snapshot of the content array
+    generationMode: "standard" | "pro";
   }>;
 
   createdAt: Date;
@@ -69,13 +70,22 @@ const LessonSchema = new Schema<ILesson>(
     content: { type: [ContentSchema], default: [] },
     audioUrls: { type: Schema.Types.Mixed, default: {} },
     isEnriched: { type: Boolean, default: false },
-
+    generationMode: {
+      type: String,
+      enum: ["standard", "pro"],
+      default: "standard",
+    },
     // ✅ History Field
     history: [
       {
         timestamp: { type: Date, default: Date.now },
         instruction: { type: String },
         content: { type: [ContentSchema], default: [] },
+        generationMode: {
+          type: String,
+          enum: ["standard", "pro"],
+          default: "standard",
+        },
       },
     ],
   },

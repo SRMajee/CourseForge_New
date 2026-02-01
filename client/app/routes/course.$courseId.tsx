@@ -17,8 +17,11 @@ import {
   Switch,
   Spacer,
   Spinner,
+  Menu,
+  MenuItem,
+  Portal,
 } from "@chakra-ui/react";
-import { useParams, Link, useSearchParams } from "react-router"; // ✅ Import useSearchParams
+import { useParams, Link, useSearchParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCourseById } from "~/services/courseService";
 import {
@@ -31,30 +34,50 @@ import {
   FaGem,
   FaChevronLeft,
   FaHistory,
+  FaClock,
+  FaLayerGroup,
+  FaChevronDown,
 } from "react-icons/fa";
 import {
+  useDeleteCourse,
   useDeleteLesson,
   useDeleteModule,
 } from "~/features/course/hooks/useCourseMutations";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthStore } from "~/store/authStore";
 import { toaster } from "~/components/ui/toaster";
 import { api } from "~/services/api";
 import { Radio } from "~/components/ui/radio";
+import type { Route } from "./+types/dashboard";
 
-// ✅ Export loader for React Router
-export async function loader() {
-  return null;
+// ✅ Update loader: Cast 'params' to ensure courseId is recognized
+export async function loader({ params }: Route.LoaderArgs) {
+  // Fixes: Property 'courseId' does not exist on type '{}'
+  const { courseId } = params as { courseId: string };
+
+  try {
+    const course = await getCourseById(courseId);
+    return { course };
+  } catch (error) {
+    return { course: null };
+  }
 }
 
+// ✅ Update meta: Cast 'data' to allow access to properties
+export function meta({ data }: Route.MetaArgs) {
+  // Fixes: Property 'course' does not exist on type 'never'
+  const title = (data as any)?.course?.title || "Studio";
+  return [{ title: `${title} | CourseForge` }];
+}
 export default function CourseDetail() {
   const { courseId } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams(); // ✅ URL State
+  const navigate = useNavigate(); // 👈 Add navigate for course deletion redirect
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const isPro = user?.planType === "PRO";
 
-  // 1. Fetch Latest Course (Always needed for history count)
+  // 1. Fetch Latest Course
   const { data: latestCourse, isLoading: isLatestLoading } = useQuery({
     queryKey: ["course", courseId],
     queryFn: () => getCourseById(courseId!),
@@ -62,8 +85,8 @@ export default function CourseDetail() {
   });
 
   // Calculate History Metrics
-  const historyLength = latestCourse?.history?.length || 0;
-  const totalVersions = historyLength + 1; // History + Current
+  const historyList = latestCourse?.history || [];
+  const totalVersions = historyList.length + 1; // History + Current
 
   // Derived Version State from URL
   const viewVersionParam = searchParams.get("v");
@@ -71,7 +94,7 @@ export default function CourseDetail() {
     ? parseInt(viewVersionParam, 10)
     : totalVersions;
 
-  // 2. Fetch Historical Snapshot (Only if not viewing latest)
+  // 2. Fetch Historical Snapshot
   const { data: historicalCourse, isLoading: isHistoryLoading } = useQuery({
     queryKey: ["course", courseId, "history", currentVersion],
     queryFn: async () => {
@@ -84,14 +107,43 @@ export default function CourseDetail() {
     enabled: !!courseId && currentVersion < totalVersions,
     staleTime: Infinity,
   });
+  // ✅ Mutation Hooks
+  const { mutate: deleteCourse } = useDeleteCourse();
+  const { mutate: deleteModule } = useDeleteModule(courseId!);
+  const { mutate: deleteLesson } = useDeleteLesson(courseId!);
 
+  // ✅ Modal State
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: "course" | "module" | "lesson";
+    id: string;
+    title?: string;
+  } | null>(null);
+
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return;
+
+    if (deleteTarget.type === "course") {
+      deleteCourse(deleteTarget.id, {
+        onSuccess: () => navigate("/dashboard"),
+      });
+    } else if (deleteTarget.type === "module") {
+      deleteModule(deleteTarget.id);
+    } else if (deleteTarget.type === "lesson") {
+      deleteLesson(deleteTarget.id);
+    }
+    setDeleteTarget(null);
+  };
   // ✅ 3. Determine which data to show
   const course =
     currentVersion === totalVersions ? latestCourse : historicalCourse;
   const isLoading =
     isLatestLoading || (currentVersion < totalVersions && isHistoryLoading);
+  useEffect(() => {
+    if (course?.title) {
+      document.title = `${course.title} | CourseForge`;
+    }
+  }, [course]);
 
-  const { mutate: deleteModule } = useDeleteModule(courseId!);
   const [isRegenOpen, setRegenOpen] = useState(false);
   const [regenOption, setRegenOption] = useState("improve");
   const [regenMode, setRegenMode] = useState<"standard" | "pro">(
@@ -106,8 +158,7 @@ export default function CourseDetail() {
       toaster.create({ title: "Course Regenerated!", type: "success" });
       setRegenOpen(false);
       queryClient.invalidateQueries({ queryKey: ["course", courseId] });
-      // ✅ Snap to new latest version (clear param)
-      setSearchParams({});
+      setSearchParams({}); // Snap to latest
     },
     onError: () =>
       toaster.create({ title: "Regeneration Failed", type: "error" }),
@@ -125,19 +176,11 @@ export default function CourseDetail() {
     regenerateMutation.mutate({ instruction, mode: regenMode });
   };
 
-  const handlePrevVersion = () => {
-    if (currentVersion > 1) {
-      setSearchParams({ v: String(currentVersion - 1) });
-    }
-  };
-
-  const handleNextVersion = () => {
-    if (currentVersion < totalVersions) {
-      if (currentVersion + 1 === totalVersions) {
-        setSearchParams({}); // Clear param to show latest
-      } else {
-        setSearchParams({ v: String(currentVersion + 1) });
-      }
+  const handleVersionChange = (version: number) => {
+    if (version === totalVersions) {
+      setSearchParams({});
+    } else {
+      setSearchParams({ v: String(version) });
     }
   };
 
@@ -162,6 +205,23 @@ export default function CourseDetail() {
     );
 
   if (!course) return <Text p={10}>Course not found.</Text>;
+
+  // Prepare History Items for Dropdown
+  // Combine historical entries + current (latest)
+  const allVersions = [
+    ...historyList.map((h: any, idx: number) => ({
+      ...h,
+      version: idx + 1,
+      isLatest: false,
+    })),
+    {
+      timestamp: latestCourse?.updatedAt || new Date(),
+      generationMode: latestCourse?.generationMode,
+      modules: latestCourse?.modules, // Contains current modules
+      version: totalVersions,
+      isLatest: true,
+    },
+  ];
 
   return (
     <Container maxW="container.xl" py={0} px={0} position="relative" pb={24}>
@@ -242,13 +302,15 @@ export default function CourseDetail() {
                   {tag}
                 </Badge>
               ))}
-              {/* Historical Badge */}
+
+              {/* Active Version Badge (Only if viewing history) */}
               {currentVersion < totalVersions && (
                 <Badge
                   colorPalette="orange"
                   variant="solid"
                   px={3}
                   rounded="full"
+                  boxShadow="0 4px 15px rgba(237, 137, 54, 0.4)"
                 >
                   <Icon as={FaHistory} mr={1} />
                   Viewing Version {currentVersion}
@@ -275,7 +337,7 @@ export default function CourseDetail() {
                 fontWeight="medium"
                 textShadow="0 2px 10px rgba(0,0,0,0.8)"
                 maxW="3xl"
-                truncate
+                lineClamp={2}
               >
                 {course.description}
               </Text>
@@ -284,7 +346,7 @@ export default function CourseDetail() {
         </Container>
       </Box>
 
-      {/* 2. MODULES LIST */}
+      {/* 2. MODULES LIST & HEADER */}
       <Flex
         gap={12}
         direction={{ base: "column", lg: "row" }}
@@ -292,13 +354,164 @@ export default function CourseDetail() {
         py={10}
       >
         <Box flex="1">
-          <HStack mb={6} justify="space-between" align="baseline">
-            <Heading size="lg">Syllabus</Heading>
-            <Text color="fg.muted" fontWeight="medium">
-              {course.modules?.length || 0} Modules
-            </Text>
-          </HStack>
+          {/* HEADER LINE: Modules count + History Dropdown */}
+          <HStack mb={6} justify="space-between" align="center">
+            <HStack gap={4}>
+              <Heading size="lg">Syllabus</Heading>
+              <Text color="fg.muted" fontWeight="medium" fontSize="lg">
+                &bull;
+              </Text>
+              <Text color="fg.muted" fontWeight="medium">
+                {course.modules?.length || 0} Modules
+              </Text>
+            </HStack>
+            <HStack gap={3}>
+              {/* ✅ NEW HISTORY DROPDOWN */}
+              <Menu.Root>
+                <Menu.Trigger asChild>
+                  <Button
+                    variant="surface"
+                    size="sm"
+                    rounded="full"
+                    px={4}
+                    bg="whiteAlpha.50"
+                    _hover={{ bg: "whiteAlpha.100" }}
+                    borderWidth="1px"
+                    borderColor="whiteAlpha.300"
+                  >
+                    <HStack gap={2}>
+                      <Icon as={FaHistory} color="gray.400" />
+                      <Text fontWeight="medium">
+                        Version {currentVersion} / {totalVersions}
+                      </Text>
+                      <Icon as={FaChevronDown} size="xs" color="gray.500" />
+                    </HStack>
+                  </Button>
+                </Menu.Trigger>
+                <Portal>
+                  <Menu.Positioner>
+                    <Menu.Content
+                      bg="gray.900"
+                      borderColor="whiteAlpha.200"
+                      shadow="2xl"
+                      rounded="xl"
+                      p={2}
+                      maxH="300px"
+                      overflowY="auto"
+                      zIndex={200}
+                    >
+                      <Text
+                        px={3}
+                        py={2}
+                        fontSize="xs"
+                        fontWeight="bold"
+                        color="gray.500"
+                        textTransform="uppercase"
+                      >
+                        Version History
+                      </Text>
+                      {allVersions.map((v) => {
+                        const isSelected = v.version === currentVersion;
+                        const isProMode = v.generationMode === "pro";
+                        return (
+                          <Menu.Item
+                            key={v.version}
+                            value={String(v.version)}
+                            onClick={() => handleVersionChange(v.version)}
+                            bg={isSelected ? "whiteAlpha.100" : "transparent"}
+                            _hover={{ bg: "whiteAlpha.200" }}
+                            rounded="lg"
+                            mb={1}
+                          >
+                            <HStack justify="space-between" w="full" py={1}>
+                              <HStack gap={3}>
+                                {/* Version Box */}
+                                <Flex
+                                  w="24px"
+                                  h="24px"
+                                  align="center"
+                                  justify="center"
+                                  bg={
+                                    isSelected ? "blue.500" : "whiteAlpha.200"
+                                  }
+                                  rounded="md"
+                                  fontSize="xs"
+                                  fontWeight="bold"
+                                  color="white"
+                                >
+                                  {v.version}
+                                </Flex>
+                                <VStack align="start" gap={0}>
+                                  <HStack gap={2}>
+                                    <Text
+                                      fontSize="sm"
+                                      fontWeight="semibold"
+                                      color="white"
+                                    >
+                                      {v.isLatest
+                                        ? "Current Version"
+                                        : `Snapshot ${v.version}`}
+                                    </Text>
+                                    {isProMode && (
+                                      <Icon
+                                        as={FaGem}
+                                        color="purple.400"
+                                        size="xs"
+                                      />
+                                    )}
+                                  </HStack>
+                                  <HStack
+                                    gap={2}
+                                    fontSize="xs"
+                                    color="gray.400"
+                                  >
+                                    <Icon as={FaClock} size="xs" />
+                                    <Text>
+                                      {new Date(
+                                        v.timestamp,
+                                      ).toLocaleDateString()}
+                                    </Text>
+                                    <Text>&bull;</Text>
+                                    <Icon as={FaLayerGroup} size="xs" />
+                                    <Text>{v.modules?.length || 0} mods</Text>
+                                  </HStack>
+                                </VStack>
+                              </HStack>
 
+                              {isSelected && (
+                                <Icon as={FaCheckCircle} color="blue.400" />
+                              )}
+                            </HStack>
+                          </Menu.Item>
+                        );
+                      })}
+                    </Menu.Content>
+                  </Menu.Positioner>
+                </Portal>
+              </Menu.Root>
+              {/* ✅ DELETE COURSE BUTTON */}
+              {currentVersion === totalVersions && (
+                <IconButton
+                  aria-label="Delete Course"
+                  variant="ghost"
+                  colorPalette="red"
+                  size="sm"
+                  rounded="full"
+                  onClick={() =>
+                    setDeleteTarget({
+                      type: "course",
+                      id: course._id,
+                      title: course.title,
+                    })
+                  }
+                  _hover={{ bg: "red.500/10", color: "red.400" }}
+                >
+                  <FaTrash />
+                </IconButton>
+              )}
+            </HStack>
+          </HStack>
+          {/* Module List */}
           <VStack align="stretch" gap={5}>
             {course.modules?.map((module: any, idx: number) => (
               <Box key={module._id}>
@@ -310,7 +523,7 @@ export default function CourseDetail() {
                     letterSpacing="wider"
                     textTransform="uppercase"
                   >
-                    Module {idx + 1} — {module.title}
+                    {module.title}
                   </Text>
                   {currentVersion === totalVersions && (
                     <IconButton
@@ -318,9 +531,13 @@ export default function CourseDetail() {
                       size="xs"
                       colorPalette="red"
                       variant="ghost"
-                      onClick={() => {
-                        if (confirm("Delete module?")) deleteModule(module._id);
-                      }}
+                      onClick={() =>
+                        setDeleteTarget({
+                          type: "module",
+                          id: module._id,
+                          title: module.title,
+                        })
+                      }
                       opacity={0}
                       _groupHover={{ opacity: 1 }}
                     >
@@ -376,6 +593,29 @@ export default function CourseDetail() {
                             </Text>
                           </HStack>
                           <HStack>
+                            {currentVersion === totalVersions && (
+                              <IconButton
+                                aria-label="Delete Lesson"
+                                size="xs"
+                                colorPalette="red"
+                                variant="ghost"
+                                opacity={0}
+                                transition="opacity 0.2s"
+                                _groupHover={{ opacity: 1 }}
+                                onClick={(e) => {
+                                  e.preventDefault(); // Stop navigation
+                                  e.stopPropagation();
+                                  setDeleteTarget({
+                                    type: "lesson",
+                                    id: lesson._id,
+                                    title: lesson.title,
+                                  });
+                                }}
+                              >
+                                <FaTrash />
+                              </IconButton>
+                            )}
+
                             <Icon color="fg.muted" opacity={0.5}>
                               <FaChevronRight />
                             </Icon>
@@ -398,98 +638,88 @@ export default function CourseDetail() {
               </Box>
             ))}
           </VStack>
-
-          {/* ✅ 3. FIXED ACTION BAR (Floating at Bottom) */}
-          <Flex
-            justify="center"
-            position="fixed"
-            bottom={6}
-            left="0"
-            right="0"
-            zIndex={100}
-            pointerEvents="none"
-          >
-            <HStack
-              bg="gray.900"
-              borderRadius="full"
-              borderWidth="1px"
-              borderColor="whiteAlpha.200"
-              shadow="2xl"
-              p={2}
-              pl={4}
-              pr={2}
-              gap={4}
-              pointerEvents="auto"
-            >
-              {/* Regenerate Button (Always Active) */}
-              <Button
-                size="sm"
-                variant="ghost"
-                color="white"
-                onClick={() => setRegenOpen(true)}
-                _hover={{ bg: "whiteAlpha.200" }}
-              >
-                <Icon as={FaMagic} mr={2} color="purple.400" />
-                Regenerate
-              </Button>
-
-              {/* Divider */}
-              <Box w="1px" h="20px" bg="whiteAlpha.200" />
-
-              {/* History Navigation */}
-              <HStack gap={2}>
-                <IconButton
-                  aria-label="Previous Version"
-                  size="xs"
-                  variant="ghost"
-                  rounded="full"
-                  color="gray.400"
-                  disabled={currentVersion <= 1}
-                  onClick={handlePrevVersion}
-                  _hover={{ color: "white", bg: "whiteAlpha.200" }}
-                >
-                  <FaChevronLeft />
-                </IconButton>
-
-                <Text
-                  fontSize="xs"
-                  fontWeight="bold"
-                  color="whiteAlpha.900"
-                  fontFamily="mono"
-                  minW="40px"
-                  textAlign="center"
-                >
-                  {currentVersion} / {totalVersions}
-                </Text>
-
-                <IconButton
-                  aria-label="Next Version"
-                  size="xs"
-                  variant="ghost"
-                  rounded="full"
-                  color="gray.400"
-                  disabled={currentVersion >= totalVersions}
-                  onClick={handleNextVersion}
-                  _hover={{ color: "white", bg: "whiteAlpha.200" }}
-                >
-                  <FaChevronRight />
-                </IconButton>
-              </HStack>
-            </HStack>
-          </Flex>
         </Box>
       </Flex>
+
+      {/* ✅ 3. FIXED REGENERATE BUTTON (Floating Bottom Right) */}
+      {currentVersion === totalVersions && (
+        <Box position="fixed" bottom={8} right={8} zIndex={100}>
+          <Button
+            size="xl"
+            bg="gray.900" // Always Black background
+            _dark={{ bg: "gray.900" }}
+            color="white"
+            variant="solid"
+            onClick={() => setRegenOpen(true)}
+            rounded="full"
+            shadow="2xl"
+            width="60px"
+            height="60px"
+            overflow="hidden"
+            transition="all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
+            padding={0}
+            borderWidth="2px"
+            borderColor={isPro ? "purple.500" : "blue.500"} // ✅ Permanent Border
+            _hover={{
+              width: "180px", // Expand
+              paddingLeft: 6,
+              paddingRight: 6,
+              bg: "gray.900",
+              borderColor: isPro ? "purple.400" : "blue.400", // Brighter on hover
+            }}
+            className="group"
+          >
+            <HStack gap={0}>
+              <Icon
+                as={FaMagic}
+                fontSize="xl"
+                color={isPro ? "purple.400" : "blue.400"} // ✅ Visible Icon
+              />
+
+              {/* Text Container - Width animates from 0 to auto */}
+              <Box
+                maxW="0px"
+                overflow="hidden"
+                whiteSpace="nowrap"
+                transition="all 0.4s ease"
+                opacity={0}
+                _groupHover={{ maxW: "120px", opacity: 1, ml: 3 }} // Expand and add margin on hover
+              >
+                <Text fontWeight="bold" fontSize="md">
+                  Regenerate
+                </Text>
+              </Box>
+            </HStack>
+          </Button>
+        </Box>
+      )}
 
       {/* REGENERATION MODAL */}
       <Dialog.Root
         open={isRegenOpen}
         onOpenChange={(e) => setRegenOpen(e.open)}
+        placement="center"
       >
-        <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(5px)" />
+        <Dialog.Backdrop bg="blackAlpha.700" backdropFilter="blur(10px)" />
         <Dialog.Positioner>
-          <Dialog.Content>
+          <Dialog.Content
+            // ✅ LIQUID GLASS STYLING
+            bg="rgba(20, 20, 20, 0.8)"
+            _light={{ bg: "rgba(255, 255, 255, 0.8)" }}
+            backdropFilter="blur(30px) saturate(180%)"
+            borderRadius="3xl"
+            borderWidth="1px"
+            borderColor="whiteAlpha.200"
+            boxShadow="0 40px 80px -12px rgba(0, 0, 0, 0.5)"
+            p={6}
+          >
             <Dialog.Header>
-              <Dialog.Title>Regenerate Course</Dialog.Title>
+              <Dialog.Title fontSize="xl" fontWeight="bold">
+                Regenerate Course
+              </Dialog.Title>
             </Dialog.Header>
             <Dialog.Body>
               <VStack align="stretch" gap={6}>
@@ -508,17 +738,17 @@ export default function CourseDetail() {
                   </Stack>
                 </RadioGroup.Root>
 
-                {/* PRO MODE TOGGLE SWITCH */}
+                {/* PRO MODE TOGGLE SWITCH (Glass Variant) */}
                 <Box
                   p={4}
-                  bg={regenMode === "pro" ? "purple.500/10" : "gray.50"}
+                  bg={regenMode === "pro" ? "purple.500/10" : "whiteAlpha.50"}
                   _dark={{
                     bg: regenMode === "pro" ? "purple.500/10" : "whiteAlpha.50",
                   }}
-                  rounded="lg"
+                  rounded="2xl"
                   borderWidth="1px"
                   borderColor={
-                    regenMode === "pro" ? "purple.500/30" : "transparent"
+                    regenMode === "pro" ? "purple.500/30" : "whiteAlpha.100"
                   }
                 >
                   <HStack justify="space-between">
@@ -558,17 +788,97 @@ export default function CourseDetail() {
             </Dialog.Body>
             <Dialog.Footer>
               <Dialog.CloseTrigger asChild>
-                <Button variant="ghost">Cancel</Button>
+                <Button variant="ghost" rounded="xl">
+                  Cancel
+                </Button>
               </Dialog.CloseTrigger>
               <Button
                 colorPalette={regenMode === "pro" ? "purple" : "blue"}
                 onClick={handleRegenerate}
                 loading={regenerateMutation.isPending}
+                rounded="xl"
+                shadow="lg"
+                px={6}
+                _hover={{ transform: "translateY(-2px)", shadow: "xl" }}
               >
                 <Icon as={FaMagic} mr={1} />
                 Regenerate
               </Button>
             </Dialog.Footer>
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Dialog.Root>
+      {/* ✅ LIQUID GLASS DELETE MODAL */}
+      <Dialog.Root
+        open={!!deleteTarget}
+        onOpenChange={() => setDeleteTarget(null)}
+        placement="center"
+      >
+        <Dialog.Backdrop bg="blackAlpha.700" backdropFilter="blur(10px)" />
+        <Dialog.Positioner>
+          <Dialog.Content
+            bg="rgba(20, 20, 20, 0.8)"
+            _light={{ bg: "rgba(255, 255, 255, 0.8)" }}
+            backdropFilter="blur(24px) saturate(180%)"
+            borderRadius="3xl"
+            borderWidth="1px"
+            borderColor="whiteAlpha.200"
+            boxShadow="0 20px 50px rgba(0,0,0,0.5)"
+            p={8}
+            textAlign="center"
+          >
+            <VStack gap={6}>
+              <Box
+                p={4}
+                bg="red.500/20"
+                rounded="full"
+                color="red.400"
+                fontSize="2xl"
+                boxShadow="0 0 20px rgba(245, 101, 101, 0.3)"
+              >
+                <Icon as={FaTrash} />
+              </Box>
+              <Box>
+                <Heading size="xl" mb={2}>
+                  Delete{" "}
+                  {deleteTarget?.type === "course"
+                    ? "Course"
+                    : deleteTarget?.type === "module"
+                      ? "Module"
+                      : "Lesson"}
+                  ?
+                </Heading>
+                <Text color="fg.muted" maxW="xs" mx="auto">
+                  Are you sure you want to remove{" "}
+                  <Text as="span" color="fg.default" fontWeight="bold">
+                    "{deleteTarget?.title}"
+                  </Text>
+                  ? This action cannot be undone.
+                </Text>
+              </Box>
+              <HStack w="full" gap={3} pt={2}>
+                <Button
+                  variant="ghost"
+                  flex={1}
+                  onClick={() => setDeleteTarget(null)}
+                  rounded="xl"
+                  h="12"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  colorPalette="red"
+                  flex={1}
+                  onClick={handleDeleteConfirm}
+                  rounded="xl"
+                  h="12"
+                  shadow="lg"
+                  _hover={{ transform: "translateY(-2px)", shadow: "xl" }}
+                >
+                  Confirm Delete
+                </Button>
+              </HStack>
+            </VStack>
           </Dialog.Content>
         </Dialog.Positioner>
       </Dialog.Root>

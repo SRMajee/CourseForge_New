@@ -14,11 +14,11 @@ export const useCreateCourse = () => {
 
     onError: (error: any) => {
       console.error(error);
-      toaster.create({
-        title: "Generation Failed",
-        description: error.response?.data?.message || "Server error",
-        type: "error",
-      });
+      // toaster.create({
+      //   title: "Generation Failed",
+      //   description: error.response?.data?.message || "Server error",
+      //   type: "error",
+      // });
     },
   });
 };

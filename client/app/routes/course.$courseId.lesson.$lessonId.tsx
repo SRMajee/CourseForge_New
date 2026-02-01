@@ -1,5 +1,5 @@
 import { useParams, useNavigate, useSearchParams } from "react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Button,
@@ -19,8 +19,11 @@ import {
   Switch,
   Flex,
   IconButton,
+  Menu,
+  Portal,
+  Spacer,
 } from "@chakra-ui/react";
-import { useLesson } from "~/features/lesson/hooks/useLesson"; // You might need to bypass this hook or update it to support the new logic, but below uses direct queries for history
+import { useLesson } from "~/features/lesson/hooks/useLesson";
 import {
   useGenerateLesson,
   useVideoSearch,
@@ -40,6 +43,9 @@ import {
   FaChevronRight,
   FaHistory,
   FaGem,
+  FaChevronDown,
+  FaClock,
+  FaTrash,
 } from "react-icons/fa";
 import { LessonContentRenderer } from "~/features/lesson/components/LessonContentRenderer";
 import { LessonPDFExporter } from "~/features/lesson/components/LessonPDFExporter";
@@ -49,6 +55,9 @@ import { useConfigStore } from "~/store/configStore";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "~/services/api";
 import { Radio } from "~/components/ui/radio";
+import { useDeleteLesson } from "~/features/course/hooks/useCourseMutations";
+import type { Route } from "./+types/dashboard";
+import { getLessonById } from "~/services/lessonService";
 
 const LANGUAGES = [
   { value: "hinglish", label: "Hinglish (Mix)", locked: false },
@@ -59,12 +68,30 @@ const LANGUAGES = [
   { value: "ja", label: "Japanese", locked: true },
   { value: "es", label: "Spanish", locked: true },
 ];
+// ✅ Update loader: Cast 'params' to ensure courseId is recognized
+export async function loader({ params }: Route.LoaderArgs) {
+  // Fixes: Property 'courseId' does not exist on type '{}'
+  const { lessonId } = params as { lessonId: string };
 
+  try {
+    const lesson = await getLessonById(lessonId);
+    return { lesson };
+  } catch (error) {
+    return { lesson: null };
+  }
+}
+
+// ✅ Update meta: Cast 'data' to allow access to properties
+export function meta({ data }: Route.MetaArgs) {
+  // Fixes: Property 'course' does not exist on type 'never'
+  const title = (data as any)?.lesson?.title || "Studio";
+  return [{ title: `${title} | CourseForge` }];
+}
 export default function LessonPage() {
   const getCost = useConfigStore((state) => state.getCost);
   const COST_LESSON_CONTENT = getCost("generateLesson");
   const COST_AUDIO_GEN = getCost("generateAudio");
-
+  const [isDeleteOpen, setDeleteOpen] = useState(false);
   const { courseId, lessonId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -84,7 +111,8 @@ export default function LessonPage() {
     enabled: !!lessonId,
   });
 
-  const historyLength = latestLesson?.history?.length || 0;
+  const historyList = latestLesson?.history || [];
+  const historyLength = historyList.length;
   const totalVersions = historyLength + 1;
   const viewVersionParam = searchParams.get("v");
   const currentVersion = viewVersionParam
@@ -108,6 +136,11 @@ export default function LessonPage() {
   // 3. Resolve Data
   const lesson =
     currentVersion === totalVersions ? latestLesson : historicalLesson;
+  useEffect(() => {
+    if (lesson?.title) {
+      document.title = `${lesson.title} | CourseForge`;
+    }
+  }, [lesson]);
   const isLoading =
     isLatestLoading || (currentVersion < totalVersions && isHistoryLoading);
 
@@ -117,7 +150,9 @@ export default function LessonPage() {
   const { mutate: generateAudio, isPending: isAudioGenerating } =
     useGenerateAudio();
   const { data: videoData } = useVideoSearch(lesson?.title || "", !!lesson);
-
+  const { mutate: deleteLesson, isPending: isDeleting } = useDeleteLesson(
+    courseId!,
+  );
   const [selectedLang, setSelectedLang] = useState("hinglish");
   const currentAudioUrl = lesson?.audioUrls?.[selectedLang];
 
@@ -165,7 +200,7 @@ export default function LessonPage() {
     }
     generate(lessonId!, {
       onSuccess: () =>
-        toaster.create({ title: "Lesson content generated!", type: "success" }),
+        toaster.create({ title: "Lesson generated!", type: "success" }),
     });
   };
 
@@ -194,13 +229,11 @@ export default function LessonPage() {
     }
   };
 
-  const handlePrevVersion = () => {
-    if (currentVersion > 1) setSearchParams({ v: String(currentVersion - 1) });
-  };
-  const handleNextVersion = () => {
-    if (currentVersion < totalVersions) {
-      if (currentVersion + 1 === totalVersions) setSearchParams({});
-      else setSearchParams({ v: String(currentVersion + 1) });
+  const handleVersionChange = (version: number) => {
+    if (version === totalVersions) {
+      setSearchParams({});
+    } else {
+      setSearchParams({ v: String(version) });
     }
   };
 
@@ -224,13 +257,27 @@ export default function LessonPage() {
     Array.isArray(lesson.content) &&
     lesson.content.length > 0;
 
+  // Prepare History Items
+  const allVersions = [
+    ...historyList.map((h: any, idx: number) => ({
+      ...h,
+      version: idx + 1,
+      isLatest: false,
+    })),
+    {
+      timestamp: latestLesson?.updatedAt || new Date(),
+      generationMode: latestLesson?.generationMode || "standard",
+      version: totalVersions,
+      isLatest: true,
+    },
+  ];
+
   return (
     <Container maxW="container.lg" py={8} pb={32}>
       <HStack justify="space-between" mb={4}>
         <Button
           variant="ghost"
-          onClick={() => navigate(-1)}
-          _hover={{ bg: "whiteAlpha.200" }}
+          onClick={() => navigate(`/course/${courseId}`)} // ✅ Explicitly navigate to course root          _hover={{ bg: "whiteAlpha.200" }}
         >
           <FaArrowLeft /> Back to Course
         </Button>
@@ -249,30 +296,9 @@ export default function LessonPage() {
             {lesson.title}
           </Heading>
           <HStack wrap="wrap" gap={3}>
-            <Badge
-              colorPalette={hasContent ? "green" : "yellow"}
-              size="lg"
-              variant="surface"
-              rounded="full"
-              px={3}
-            >
-              {hasContent ? "Ready" : "Draft"}
-            </Badge>
-            {/* Version Badge */}
-            {currentVersion < totalVersions && (
-              <Badge
-                colorPalette="orange"
-                variant="solid"
-                px={3}
-                rounded="full"
-              >
-                <Icon as={FaHistory} mr={1} />
-                Viewing Version {currentVersion}
-              </Badge>
-            )}
-
-            {/* Mode Badge (If tracked in history) */}
-            {(lesson as any).generationMode === "pro" && (
+            {/* Mode Badge */}
+            {/* ✅ Removed 'as any' cast since type is now updated */}
+            {lesson.generationMode === "pro" && (
               <Badge
                 colorPalette="purple"
                 variant="solid"
@@ -281,6 +307,129 @@ export default function LessonPage() {
               >
                 PRO MODE
               </Badge>
+            )}
+
+            {/* ✅ NEW HISTORY DROPDOWN */}
+            {hasContent && (
+              <Menu.Root>
+                <Menu.Trigger asChild>
+                  <Button
+                    variant="surface"
+                    size="sm"
+                    rounded="full"
+                    px={4}
+                    bg="whiteAlpha.50"
+                    _hover={{ bg: "whiteAlpha.100" }}
+                    borderWidth="1px"
+                    borderColor="whiteAlpha.300"
+                  >
+                    <HStack gap={2}>
+                      <Icon as={FaHistory} color="gray.400" />
+                      <Text fontWeight="medium">
+                        Version {currentVersion} / {totalVersions}
+                      </Text>
+                      <Icon as={FaChevronDown} size="xs" color="gray.500" />
+                    </HStack>
+                  </Button>
+                </Menu.Trigger>
+                <Portal>
+                  <Menu.Positioner>
+                    <Menu.Content
+                      bg="gray.900"
+                      borderColor="whiteAlpha.200"
+                      shadow="2xl"
+                      rounded="xl"
+                      p={2}
+                      maxH="300px"
+                      overflowY="auto"
+                      zIndex={200}
+                    >
+                      <Text
+                        px={3}
+                        py={2}
+                        fontSize="xs"
+                        fontWeight="bold"
+                        color="gray.500"
+                        textTransform="uppercase"
+                      >
+                        Version History
+                      </Text>
+                      {allVersions.map((v) => {
+                        const isSelected = v.version === currentVersion;
+                        const isProMode = v.generationMode === "pro";
+                        return (
+                          <Menu.Item
+                            key={v.version}
+                            value={String(v.version)}
+                            onClick={() => handleVersionChange(v.version)}
+                            bg={isSelected ? "whiteAlpha.100" : "transparent"}
+                            _hover={{ bg: "whiteAlpha.200" }}
+                            rounded="lg"
+                            mb={1}
+                          >
+                            <HStack justify="space-between" w="full" py={1}>
+                              <HStack gap={3}>
+                                {/* Version Box */}
+                                <Flex
+                                  w="24px"
+                                  h="24px"
+                                  align="center"
+                                  justify="center"
+                                  bg={
+                                    isSelected ? "blue.500" : "whiteAlpha.200"
+                                  }
+                                  rounded="md"
+                                  fontSize="xs"
+                                  fontWeight="bold"
+                                  color="white"
+                                >
+                                  {v.version}
+                                </Flex>
+                                <VStack align="start" gap={0}>
+                                  <HStack gap={2}>
+                                    <Text
+                                      fontSize="sm"
+                                      fontWeight="semibold"
+                                      color="white"
+                                    >
+                                      {v.isLatest
+                                        ? "Current Version"
+                                        : `Snapshot ${v.version}`}
+                                    </Text>
+                                    {isProMode && (
+                                      <Icon
+                                        as={FaGem}
+                                        color="purple.400"
+                                        size="xs"
+                                      />
+                                    )}
+                                  </HStack>
+                                  <HStack
+                                    gap={2}
+                                    fontSize="xs"
+                                    color="gray.400"
+                                  >
+                                    <Icon as={FaClock} size="xs" />
+                                    <Text>
+                                      {new Date(
+                                        v.timestamp,
+                                      ).toLocaleDateString()}
+                                    </Text>
+                                  </HStack>
+                                </VStack>
+                              </HStack>
+
+                              {isSelected && (
+                                <Icon as={FaCheckCircle} color="blue.400" />
+                              )}
+                            </HStack>
+                          </Menu.Item>
+                        );
+                      })}
+                    </Menu.Content>
+                  </Menu.Positioner>
+                </Portal>
+              </Menu.Root>
             )}
 
             {hasContent && (
@@ -296,6 +445,19 @@ export default function LessonPage() {
                 }
               />
             )}
+            {/* ✅ SPACER PUSHES DELETE BUTTON TO RIGHT END */}
+            <Spacer />
+
+            <IconButton
+              aria-label="Delete Lesson"
+              size="sm"
+              colorPalette="red"
+              variant="ghost"
+              loading={isDeleting}
+              onClick={() => setDeleteOpen(true)} // 👈 Open Modal instead of confirm()
+            >
+              <FaTrash />
+            </IconButton>
           </HStack>
         </Box>
 
@@ -494,94 +656,83 @@ export default function LessonPage() {
         )}
       </VStack>
 
-      {/* ✅ INLINE ACTION BAR (Floating at Bottom) */}
-      {hasContent && (
-        <Flex
-          justify="center"
-          position="fixed"
-          bottom={6}
-          left="0"
-          right="0"
-          zIndex={100}
-          pointerEvents="none"
-        >
-          <HStack
+      {/* ✅ FIXED ACTION BUTTON (Refine) - Bottom Right */}
+      {hasContent && currentVersion === totalVersions && (
+        <Box position="fixed" bottom={8} right={8} zIndex={100}>
+          <Button
+            size="xl"
             bg="gray.900"
-            borderRadius="full"
-            borderWidth="1px"
-            borderColor="whiteAlpha.200"
+            _dark={{ bg: "gray.900" }}
+            color="white"
+            variant="solid"
+            onClick={() => setRegenOpen(true)}
+            rounded="full"
             shadow="2xl"
-            p={2}
-            pl={4}
-            pr={2}
-            gap={4}
-            pointerEvents="auto"
+            width="60px"
+            height="60px"
+            overflow="hidden"
+            transition="all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
+            padding={0}
+            borderWidth="2px"
+            borderColor={isPro ? "purple.500" : "blue.500"}
+            _hover={{
+              width: "150px", // Expand on hover
+              paddingLeft: 6,
+              paddingRight: 6,
+              bg: "gray.900",
+              borderColor: isPro ? "purple.400" : "blue.400",
+            }}
+            className="group"
           >
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setRegenOpen(true)}
-              // Enable regen anytime, effectively branching/appending history
-              _hover={{ bg: "whiteAlpha.200" }}
-            >
-              <Icon as={FaMagic} mr={2} color={"purple.400"} />
-              Refine
-            </Button>
-
-            <Box w="1px" h="20px" bg="whiteAlpha.200" />
-
-            <HStack gap={2}>
-              <IconButton
-                aria-label="Previous"
-                size="xs"
-                variant="ghost"
-                rounded="full"
-                color="gray.400"
-                disabled={currentVersion <= 1}
-                onClick={handlePrevVersion}
-                _hover={{ color: "white", bg: "whiteAlpha.200" }}
+            <HStack gap={0}>
+              <Icon
+                as={FaMagic}
+                fontSize="xl"
+                color={isPro ? "purple.400" : "blue.400"}
+              />
+              <Box
+                maxW="0px"
+                overflow="hidden"
+                whiteSpace="nowrap"
+                transition="all 0.4s ease"
+                opacity={0}
+                _groupHover={{ maxW: "120px", opacity: 1, ml: 3 }}
               >
-                <FaChevronLeft />
-              </IconButton>
-
-              <Text
-                fontSize="xs"
-                fontWeight="bold"
-                color="whiteAlpha.900"
-                fontFamily="mono"
-                minW="40px"
-                textAlign="center"
-              >
-                {currentVersion} / {totalVersions}
-              </Text>
-
-              <IconButton
-                aria-label="Next"
-                size="xs"
-                variant="ghost"
-                rounded="full"
-                color="gray.400"
-                disabled={currentVersion >= totalVersions}
-                onClick={handleNextVersion}
-                _hover={{ color: "white", bg: "whiteAlpha.200" }}
-              >
-                <FaChevronRight />
-              </IconButton>
+                <Text fontWeight="bold" fontSize="md">
+                  Refine
+                </Text>
+              </Box>
             </HStack>
-          </HStack>
-        </Flex>
+          </Button>
+        </Box>
       )}
 
       {/* REGENERATION MODAL */}
       <Dialog.Root
         open={isRegenOpen}
         onOpenChange={(e) => setRegenOpen(e.open)}
+        placement="center"
       >
-        <Dialog.Backdrop bg="blackAlpha.600" backdropFilter="blur(5px)" />
+        <Dialog.Backdrop bg="blackAlpha.700" backdropFilter="blur(10px)" />
         <Dialog.Positioner>
-          <Dialog.Content>
+          <Dialog.Content
+            // ✅ LIQUID GLASS STYLING
+            bg="rgba(20, 20, 20, 0.8)"
+            _light={{ bg: "rgba(255, 255, 255, 0.8)" }}
+            backdropFilter="blur(30px) saturate(180%)"
+            borderRadius="3xl"
+            borderWidth="1px"
+            borderColor="whiteAlpha.200"
+            boxShadow="0 40px 80px -12px rgba(0, 0, 0, 0.5)"
+            p={6}
+          >
             <Dialog.Header>
-              <Dialog.Title>Refine Lesson</Dialog.Title>
+              <Dialog.Title fontSize="xl" fontWeight="bold">
+                Refine Lesson
+              </Dialog.Title>
             </Dialog.Header>
             <Dialog.Body>
               <VStack align="stretch" gap={6}>
@@ -604,14 +755,14 @@ export default function LessonPage() {
                 {/* Pro Mode Toggle */}
                 <Box
                   p={4}
-                  bg={regenMode === "pro" ? "purple.500/10" : "gray.50"}
+                  bg={regenMode === "pro" ? "purple.500/10" : "whiteAlpha.50"}
                   _dark={{
                     bg: regenMode === "pro" ? "purple.500/10" : "whiteAlpha.50",
                   }}
-                  rounded="lg"
+                  rounded="2xl"
                   borderWidth="1px"
                   borderColor={
-                    regenMode === "pro" ? "purple.500/30" : "transparent"
+                    regenMode === "pro" ? "purple.500/30" : "whiteAlpha.100"
                   }
                 >
                   <HStack justify="space-between">
@@ -650,17 +801,96 @@ export default function LessonPage() {
             </Dialog.Body>
             <Dialog.Footer>
               <Dialog.CloseTrigger asChild>
-                <Button variant="ghost">Cancel</Button>
+                <Button variant="ghost" rounded="xl">
+                  Cancel
+                </Button>
               </Dialog.CloseTrigger>
               <Button
                 colorPalette={regenMode === "pro" ? "purple" : "blue"}
                 onClick={handleRefineSubmit}
                 loading={refineMutation.isPending}
+                rounded="xl"
+                shadow="lg"
+                px={6}
+                _hover={{ transform: "translateY(-2px)", shadow: "xl" }}
               >
                 <Icon as={FaMagic} mr={1} />
                 Refine
               </Button>
             </Dialog.Footer>
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Dialog.Root>
+      {/* ✅ LIQUID GLASS DELETE MODAL */}
+      <Dialog.Root
+        open={isDeleteOpen}
+        onOpenChange={(e) => setDeleteOpen(e.open)}
+        placement="center"
+      >
+        <Dialog.Backdrop bg="blackAlpha.700" backdropFilter="blur(10px)" />
+        <Dialog.Positioner>
+          <Dialog.Content
+            bg="rgba(20, 20, 20, 0.8)"
+            _light={{ bg: "rgba(255, 255, 255, 0.8)" }}
+            backdropFilter="blur(24px) saturate(180%)"
+            borderRadius="3xl"
+            borderWidth="1px"
+            borderColor="whiteAlpha.200"
+            boxShadow="0 20px 50px rgba(0,0,0,0.5)"
+            p={8}
+            textAlign="center"
+          >
+            <VStack gap={6}>
+              <Box
+                p={4}
+                bg="red.500/20"
+                rounded="full"
+                color="red.400"
+                fontSize="2xl"
+                boxShadow="0 0 20px rgba(245, 101, 101, 0.3)"
+              >
+                <Icon as={FaTrash} />
+              </Box>
+              <Box>
+                <Heading size="xl" mb={2}>
+                  Delete Lesson?
+                </Heading>
+                <Text color="fg.muted" maxW="xs" mx="auto">
+                  Are you sure you want to delete{" "}
+                  <Text as="span" color="fg.default" fontWeight="bold">
+                    "{lesson.title}"
+                  </Text>
+                  ? This action is permanent.
+                </Text>
+              </Box>
+              <HStack w="full" gap={3} pt={2}>
+                <Button
+                  variant="ghost"
+                  flex={1}
+                  onClick={() => setDeleteOpen(false)}
+                  rounded="xl"
+                  h="12"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  colorPalette="red"
+                  flex={1}
+                  onClick={() => {
+                    deleteLesson(lessonId!, {
+                      onSuccess: () => navigate(`/course/${courseId}`),
+                    });
+                  }}
+                  rounded="xl"
+                  h="12"
+                  shadow="lg"
+                  loading={isDeleting}
+                  _hover={{ transform: "translateY(-2px)", shadow: "xl" }}
+                >
+                  Confirm Delete
+                </Button>
+              </HStack>
+            </VStack>
           </Dialog.Content>
         </Dialog.Positioner>
       </Dialog.Root>

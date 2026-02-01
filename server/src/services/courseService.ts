@@ -17,6 +17,7 @@ import { creditService } from "./creditService"; // 👈 Import
 import { redisClient } from "../config/redis";
 import { clarificationService } from "./ClarificationService";
 import { imageService } from "./imageService";
+import e from "express";
 export class ClarificationNeededError extends Error {
   public data: any;
   constructor(data: any) {
@@ -34,11 +35,24 @@ export class CourseService {
    * ⚡ NEW: Redis-Based Pre-flight Check
    */
   async validateBalance(userId: string, cost: number): Promise<void> {
-    const balance = await creditService.getBalance(userId);
+    let balance = await creditService.getBalance(userId);
     if (balance < cost) {
-      throw new Error(
-        `Insufficient credits. Required: ${cost}, Available: ${balance}`,
-      );
+      const user = await User.findById(userId).select("credits");
+      const dbBalance = user?.credits || 0;
+
+      if (dbBalance >= cost) {
+        // Drift detected! Heal the cache.
+        logger.warn(
+          `⚠️ Credit Cache Drift Detected: Redis(${balance}) < DB(${dbBalance}). Syncing...`,
+        );
+        await redisClient.set(`user:${userId}:credits`, dbBalance);
+        balance = dbBalance; // Update local var to allow progression
+      } else {
+        // Truly insufficient
+        throw new Error(
+          `Insufficient credits. Required: ${cost}, Available: ${balance}`,
+        );
+      }
     }
   }
   /**
@@ -261,8 +275,9 @@ export class CourseService {
   ) {
     const course = await Course.findOne({ _id: courseId, userId });
     if (!course) throw new Error("Course not found");
-
-    const cost = mode === "pro" ? 75 : 25;
+    const COST_PRO = Number(CREDIT_COSTS.COST_REGENERATE_COURSE_PRO) || 75;
+    const COST = Number(CREDIT_COSTS.COST_REGENERATE_COURSE) || 25;
+    const cost = mode === "pro" ? COST_PRO : COST;
     await this.validateBalance(userId, cost);
     await creditService.deductCredits(userId, cost);
 
@@ -329,8 +344,9 @@ export class CourseService {
   ) {
     const lesson = await Lesson.findById(lessonId);
     if (!lesson) throw new Error("Lesson not found");
-
-    const cost = mode === "pro" ? 40 : 15;
+    const COST_PRO = Number(CREDIT_COSTS.COST_REGENERATE_LESSON_PRO) || 25;
+    const COST = Number(CREDIT_COSTS.COST_REGENERATE_LESSON) || 15;
+    const cost = mode === "pro" ? COST_PRO : COST;
     await this.validateBalance(userId, cost);
     await creditService.deductCredits(userId, cost);
 

@@ -29,7 +29,7 @@ export interface Lesson {
 
   // The content blocks
   content: LessonContent[];
-
+  generationMode: "standard" | "pro";
   isEnriched: boolean;
 
   // Dictionary for multi-language audio

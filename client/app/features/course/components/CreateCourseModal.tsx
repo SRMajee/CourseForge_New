@@ -89,7 +89,7 @@ export const CreateCourseModal = ({
           }
         },
         onError: () => {
-          toaster.create({ title: "Generation Failed", type: "error" });
+          // toaster.create({ title: "Generation Failed", type: "error" });
         },
       },
     );
@@ -300,10 +300,21 @@ export const CreateCourseModal = ({
                   size="lg"
                   px={8}
                   shadow="lg"
-                  _hover={{ transform: "translateY(-2px)", shadow: "xl" }}
+                  _hover={
+                    canAfford
+                      ? { transform: "translateY(-2px)", shadow: "xl" }
+                      : {}
+                  }
                   transition="all 0.2s"
                 >
-                  <FaMagic style={{ marginRight: "8px" }} /> Generate
+                  {!isPending && canAfford && (
+                    <FaMagic style={{ marginRight: "8px" }} />
+                  )}
+                  {isPending
+                    ? "Queueing..."
+                    : !canAfford
+                      ? "Insufficient Credits"
+                      : "Generate"}{" "}
                 </Button>
               </Dialog.Footer>
             )}
