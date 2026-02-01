@@ -30,9 +30,14 @@ export interface ILesson extends Document {
   }>;
 
   isEnriched: boolean;
-
-  // ✅ FIX: Use Record (Plain Object) instead of Map
   audioUrls?: Record<string, string>;
+
+  // ✅ NEW: History for Refinement
+  history: Array<{
+    timestamp: Date;
+    instruction: string;
+    content: any[]; // Snapshot of the content array
+  }>;
 
   createdAt: Date;
   updatedAt: Date;
@@ -62,14 +67,17 @@ const LessonSchema = new Schema<ILesson>(
     module: { type: Schema.Types.ObjectId, ref: "Module", required: true },
     objectives: { type: [String], default: [] },
     content: { type: [ContentSchema], default: [] },
-
-    // ✅ FIX: Use Mixed/Object to store the Record directly
-    audioUrls: {
-      type: Schema.Types.Mixed,
-      default: {},
-    },
-
+    audioUrls: { type: Schema.Types.Mixed, default: {} },
     isEnriched: { type: Boolean, default: false },
+
+    // ✅ History Field
+    history: [
+      {
+        timestamp: { type: Date, default: Date.now },
+        instruction: { type: String },
+        content: { type: [ContentSchema], default: [] },
+      },
+    ],
   },
   {
     timestamps: true,

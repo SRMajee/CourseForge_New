@@ -42,7 +42,7 @@ const envSchema = z.object({
   COST_GENERATE_LESSON: z.string().transform(Number).default("5"),
   COST_GENERATE_AUDIO: z.string().transform(Number).default("15"),
   COST_EXPORT_PDF: z.string().transform(Number).default("5"),
-
+  COST_CREATE_COURSE_PRO: z.string().transform(Number).default("20"),
   // 👇 STRIPE PRODUCT CONFIG
   STRIPE_PRICE_ID_TOPUP: z.string().min(1, "Topup Price ID missing"),
   STRIPE_PRICE_ID_PRO: z.string().min(1, "Pro Price ID missing"),

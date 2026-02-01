@@ -7,9 +7,24 @@ import {
   Icon,
   Input,
   Badge,
+  Flex,
+  Avatar,
+  IconButton,
 } from "@chakra-ui/react";
+import { keyframes } from "@emotion/react";
 import { useState, useEffect, useRef } from "react";
-import { FaTerminal } from "react-icons/fa";
+import { FaRobot, FaArrowRight, FaPaperPlane } from "react-icons/fa";
+
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
+const pulse = keyframes`
+  0% { opacity: 0.4; }
+  50% { opacity: 1; }
+  100% { opacity: 0.4; }
+`;
 
 interface Question {
   id: string;
@@ -33,232 +48,260 @@ export const ClarificationForm = ({
 }: ClarificationFormProps) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [textInput, setTextInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
   const answersRef = useRef<Record<string, string>>({});
-  const [hasSubmitted, setHasSubmitted] = useState(false);
 
-  const [logs, setLogs] = useState<string[]>([
-    "> INITIALIZING CLARIFICATION PROTOCOL...",
-    `> SYSTEM ALERT: Ambiguity Detected.`,
-    `> REASON: "${reason}"`,
-    "> STANDBY FOR USER INPUT...",
-  ]);
+  const [history, setHistory] = useState<
+    { role: "ai" | "user"; content: string; id: string }[]
+  >([]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const currentQuestion = questions[currentStep];
-  const isComplete = currentStep >= questions.length;
+
+  useEffect(() => {
+    if (history.length === 0 && questions.length > 0) {
+      setIsTyping(true);
+      setTimeout(() => {
+        setIsTyping(false);
+        setHistory([
+          // { role: "ai", content: `I need to clarify: ${reason}`, id: "intro" },
+          { role: "ai", content: questions[0].text, id: "q0" },
+        ]);
+      }, 1000);
+    }
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs, currentStep]);
+  }, [history, isTyping]);
 
-  useEffect(() => {
-    if (isComplete && hasSubmitted && !isLoading) {
-      setCurrentStep(questions.length - 1);
-      addLog(
-        "❌ Error: Transmission failed or rejected. Please retry.",
-        "info",
-      );
-      setHasSubmitted(false);
-    }
-  }, [isLoading, isComplete, hasSubmitted, questions.length]);
+  const handleAnswer = (value: string) => {
+    setHistory((prev) => [
+      ...prev,
+      { role: "user", content: value, id: Date.now().toString() },
+    ]);
 
-  const addLog = (message: string, type: "info" | "user" = "info") => {
-    const prefix = type === "user" ? "root@user:~$" : ">";
-    setLogs((prev) => [...prev, `${prefix} ${message}`]);
-  };
-
-  const handleAnswer = (questionId: string, value: string) => {
-    addLog(`Selected: "${value}"`, "user");
     if (!value.includes("Decide for me")) {
-      answersRef.current = { ...answersRef.current, [questionId]: value };
-    } else {
-      addLog("Skipping parameter configuration...", "info");
+      answersRef.current = {
+        ...answersRef.current,
+        [currentQuestion.id]: value,
+      };
     }
+
+    setIsTyping(true);
 
     setTimeout(() => {
-      if (currentStep < questions.length - 1) {
-        setCurrentStep((prev) => prev + 1);
+      const nextStep = currentStep + 1;
+      if (nextStep < questions.length) {
+        setCurrentStep(nextStep);
+        setIsTyping(false);
+        setHistory((prev) => [
+          ...prev,
+          { role: "ai", content: questions[nextStep].text, id: `q${nextStep}` },
+        ]);
       } else {
         finishSequence();
       }
-    }, 400);
+    }, 2500); // 2.5s Thinking delay
   };
 
   const finishSequence = () => {
-    setCurrentStep(questions.length);
-    addLog("CONFIGURATION COMPLETE.", "info");
-    addLog("RESUMING GENERATION SEQUENCE...", "info");
-
-    setTimeout(() => {
-      onSubmit(answersRef.current);
-      setHasSubmitted(true);
-    }, 800);
+    setIsTyping(false);
+    setHistory((prev) => [
+      ...prev,
+      { role: "ai", content: "Great. Initializing generation...", id: "done" },
+    ]);
+    setTimeout(() => onSubmit(answersRef.current), 1000);
   };
 
   const handleTextSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!textInput.trim()) return;
-    handleAnswer(currentQuestion.id, textInput);
+    handleAnswer(textInput);
     setTextInput("");
   };
 
   return (
     <Box
-      // ✅ DARK LIQUID GLASS TERMINAL
-      bg="rgba(5, 5, 5, 0.85)"
-      backdropFilter="blur(24px) saturate(150%)"
-      color="green.400"
-      p={6}
-      borderRadius="2xl"
-      fontFamily="mono"
-      shadow="2xl"
-      borderWidth="1px"
-      borderColor="whiteAlpha.100"
       w="full"
-      h="500px"
+      h="450px" // ✅ Reduced Height for compact view
       display="flex"
       flexDirection="column"
       position="relative"
-      _before={{
-        content: '""',
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        boxShadow: "inset 0 0 60px rgba(0, 255, 0, 0.05)", // Subtle internal glow
-        borderRadius: "2xl",
-      }}
+      bg="rgba(255, 255, 255, 0.6)"
+      _dark={{ bg: "rgba(20, 20, 20, 0.6)" }}
+      backdropFilter="blur(30px) saturate(180%)"
+      borderRadius="3xl"
+      borderWidth="1px"
+      borderColor="whiteAlpha.400"
+      shadow="xl"
+      overflow="hidden"
+      animation={`${fadeIn} 0.4s ease-out`}
     >
-      {/* Header */}
       <HStack
-        justify="space-between"
-        mb={4}
+        p={4}
         borderBottomWidth="1px"
-        borderColor="whiteAlpha.100"
-        pb={3}
+        borderColor="whiteAlpha.200"
+        bg="whiteAlpha.50"
+        justify="space-between"
       >
-        <HStack>
-          <Icon as={FaTerminal} />
-          <Text fontWeight="bold">Clarification Terminal</Text>
+        <HStack color="purple.500">
+          <Icon as={FaRobot} />
+          <Text fontWeight="bold" fontSize="xs">
+            CourseForge Architect
+          </Text>
         </HStack>
         <Badge
-          colorPalette="yellow"
+          colorPalette="green"
           variant="solid"
-          bg="yellow.500/20"
-          color="yellow.300"
-          borderWidth="1px"
-          borderColor="yellow.500/40"
+          rounded="full"
+          px={2}
+          size="xs"
         >
-          INTERACTIVE_MODE
+          Live
         </Badge>
       </HStack>
 
-      {/* Logs */}
       <VStack
-        align="start"
         flex="1"
         overflowY="auto"
-        gap={2}
-        fontSize="sm"
-        mb={4}
+        p={5}
+        gap={4}
+        align="stretch"
         css={{ "&::-webkit-scrollbar": { display: "none" } }}
       >
-        {logs.map((log, i) => (
-          <Text key={i} opacity={0.8} wordBreak="break-word">
-            {log}
-          </Text>
+        {history.map((msg) => (
+          <Flex
+            key={msg.id}
+            justify={msg.role === "user" ? "flex-end" : "flex-start"}
+            animation={`${fadeIn} 0.4s ease-out`}
+          >
+            <HStack
+              align="end"
+              gap={2}
+              flexDirection={msg.role === "user" ? "row-reverse" : "row"}
+            >
+              {msg.role === "ai" && (
+                <Avatar.Root size="2xs" bg="purple.500">
+                  <Avatar.Fallback>
+                    <FaRobot />
+                  </Avatar.Fallback>
+                </Avatar.Root>
+              )}
+              <Box
+                maxW="85%"
+                bg={msg.role === "user" ? "purple.600" : "whiteAlpha.800"}
+                _dark={{
+                  bg: msg.role === "user" ? "purple.600" : "whiteAlpha.200",
+                }}
+                color={msg.role === "user" ? "white" : "fg.default"}
+                p={2.5}
+                px={4}
+                rounded="2xl"
+                borderBottomRightRadius={msg.role === "user" ? "sm" : "2xl"}
+                borderBottomLeftRadius={msg.role === "ai" ? "sm" : "2xl"}
+                boxShadow="sm"
+                fontSize="sm"
+              >
+                <Text>{msg.content}</Text>
+              </Box>
+            </HStack>
+          </Flex>
         ))}
-        <div ref={bottomRef} />
-      </VStack>
 
-      {/* Input Area */}
-      <Box borderTopWidth="1px" borderColor="whiteAlpha.100" pt={4}>
-        {!isComplete ? (
-          <VStack align="stretch" gap={4}>
-            <Text color="white" fontWeight="bold" fontSize="md">
-              <Text as="span" color="green.500" mr={2}>
-                ?
-              </Text>
-              [{currentStep + 1}/{questions.length}] {currentQuestion.text}
-            </Text>
+        {isTyping && (
+          <Flex justify="flex-start" animation={`${fadeIn} 0.3s ease-out`}>
+            <HStack
+              bg="whiteAlpha.200"
+              p={2.5}
+              rounded="2xl"
+              borderBottomLeftRadius="sm"
+              gap={1}
+            >
+              <Box
+                w="5px"
+                h="5px"
+                bg="purple.400"
+                rounded="full"
+                animation={`${pulse} 1s infinite`}
+              />
+              <Box
+                w="5px"
+                h="5px"
+                bg="purple.400"
+                rounded="full"
+                animation={`${pulse} 1s infinite 0.2s`}
+              />
+              <Box
+                w="5px"
+                h="5px"
+                bg="purple.400"
+                rounded="full"
+                animation={`${pulse} 1s infinite 0.4s`}
+              />
+            </HStack>
+          </Flex>
+        )}
 
+        {!isTyping && currentStep < questions.length && history.length > 0 && (
+          <Box animation={`${fadeIn} 0.5s ease-out forwards`} mt={1} pl={8}>
             {currentQuestion.type === "choice" ? (
-              <VStack align="stretch" gap={2}>
-                {currentQuestion.options.map((opt, idx) => (
+              <Flex gap={2} wrap="wrap">
+                {currentQuestion.options.map((opt) => (
                   <Button
                     key={opt}
-                    variant="ghost"
-                    justifyContent="flex-start"
-                    color="green.300"
-                    _hover={{ bg: "whiteAlpha.100", color: "green.100" }}
-                    onClick={() => handleAnswer(currentQuestion.id, opt)}
-                    h="auto"
-                    py={2}
-                    rounded="lg"
+                    size="xs" // Smaller buttons
+                    variant="outline"
+                    borderColor="purple.400"
+                    color="purple.500"
+                    _dark={{ color: "purple.300", borderColor: "purple.500" }}
+                    rounded="full"
+                    onClick={() => handleAnswer(opt)}
+                    _hover={{
+                      bg: "purple.500",
+                      color: "white",
+                      borderColor: "purple.500",
+                    }}
                   >
-                    <HStack width="full">
-                      <Badge
-                        variant="outline"
-                        colorPalette="gray"
-                        size="sm"
-                        borderColor="whiteAlpha.400"
-                      >
-                        {idx + 1}
-                      </Badge>
-                      <Text>{opt}</Text>
-                    </HStack>
+                    {opt}
                   </Button>
                 ))}
-              </VStack>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  color="gray.500"
+                  onClick={() => handleAnswer("Decide for me")}
+                >
+                  Skip
+                </Button>
+              </Flex>
             ) : (
-              <form onSubmit={handleTextSubmit}>
-                <HStack>
-                  <Text color="green.500">{">"}</Text>
-                  <Input
-                    autoFocus
-                    variant="flushed"
-                    borderColor="whiteAlpha.300"
-                    color="white"
-                    placeholder="Type answer..."
-                    value={textInput}
-                    onChange={(e) => setTextInput(e.target.value)}
-                    _focus={{ borderColor: "green.500" }}
-                  />
-                  <Button
-                    type="submit"
-                    size="sm"
-                    variant="ghost"
-                    color="green.400"
-                    _hover={{ bg: "whiteAlpha.100" }}
-                  >
-                    ENTER
-                  </Button>
-                </HStack>
-              </form>
+              <HStack w="full" maxW="350px">
+                <Input
+                  placeholder="Type..."
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleTextSubmit(e)}
+                  bg="whiteAlpha.500"
+                  _dark={{ bg: "blackAlpha.400" }}
+                  rounded="full"
+                  size="sm"
+                />
+                <IconButton
+                  aria-label="Send"
+                  size="sm"
+                  rounded="full"
+                  colorPalette="purple"
+                  onClick={handleTextSubmit}
+                >
+                  <FaPaperPlane />
+                </IconButton>
+              </HStack>
             )}
-
-            <HStack justify="flex-end">
-              <Button
-                size="xs"
-                variant="plain"
-                color="whiteAlpha.500"
-                _hover={{ color: "whiteAlpha.800" }}
-                onClick={() =>
-                  handleAnswer(currentQuestion.id, "Decide for me")
-                }
-              >
-                [SKIP / AUTO]
-              </Button>
-            </HStack>
-          </VStack>
-        ) : (
-          <HStack justify="center" py={4} color="green.400" gap={3}>
-            <Box className="animate-spin" fontSize="xl">
-              <Icon as={FaTerminal} />
-            </Box>
-            <Text>TRANSMITTING DATA...</Text>
-          </HStack>
+          </Box>
         )}
-      </Box>
+        <div ref={bottomRef} />
+      </VStack>
     </Box>
   );
 };

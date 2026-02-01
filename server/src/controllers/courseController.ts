@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import { courseService } from "../services/courseService";
-import { lessonService } from "../services/lessonService";
+import { CourseService, courseService } from "../services/courseService";
+import { LessonService, lessonService } from "../services/lessonService";
 import { clarificationService } from "../services/ClarificationService"; // 👈 Phase 8
 import logger from "../utils/logger";
 import { courseQueue } from "../queues/courseQueue";
@@ -71,7 +71,7 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
     // ---------------------------------------------------------
     // 🚦 PHASE 8: Synchronous Ambiguity Check (PRO EXCLUSIVE)
     // ---------------------------------------------------------
-    if (isPro && !skipClarification) {
+    if (isPro && !skipClarification && mode === "pro") {
       logger.info(`🤔 Checking ambiguity for: "${topic}" (User is PRO)`);
       const analysis = await clarificationService.analyzeTopic(topic);
       if (analysis.isAmbiguous && analysis.questions?.length > 0) {
@@ -117,7 +117,100 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Failed to queue job" });
   }
 };
+export const regenerateCourseStructure = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { courseId } = req.params;
+    const { instruction, mode } = req.body;
+    // @ts-ignore
+    const userId = req.user?._id;
 
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const updatedCourse = await courseService.regenerateCourse(
+      courseId,
+      userId,
+      instruction,
+      mode,
+    );
+
+    return res.json(updatedCourse);
+  } catch (error: any) {
+    logger.error("Regenerate Course Error:", error);
+    if (error.message.includes("Insufficient credits")) {
+      return res.status(402).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Failed to regenerate course" });
+  }
+};
+// ✅ NEW: Get Specific Course Version
+export const getCourseVersion = async (req: Request, res: Response) => {
+  try {
+    const { courseId, versionIndex } = req.params;
+    // @ts-ignore
+    const userId = req.user?._id;
+
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const historicalCourse = await courseService.getCourseVersion(
+      courseId,
+      parseInt(versionIndex),
+    );
+
+    return res.json(historicalCourse);
+  } catch (error: any) {
+    logger.error("Get Course Version Error:", error);
+    return res.status(500).json({ message: "Failed to retrieve version" });
+  }
+};
+// ✅ NEW: Get Specific Lesson Version
+export const getLessonVersion = async (req: Request, res: Response) => {
+  try {
+    const { lessonId, versionIndex } = req.params;
+    // @ts-ignore
+    const userId = req.user?._id;
+
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const historicalLesson = await courseService.getLessonVersion(
+      lessonId,
+      parseInt(versionIndex),
+    );
+
+    return res.json(historicalLesson);
+  } catch (error: any) {
+    // logger.error("Get Lesson Version Error:", error);
+    return res.status(500).json({ message: "Failed to retrieve version" });
+  }
+};
+// ✅ NEW: Refine Lesson Content
+export const refineLessonContent = async (req: Request, res: Response) => {
+  try {
+    const { lessonId } = req.params;
+    const { instruction, mode } = req.body;
+    // @ts-ignore
+    const userId = req.user?._id;
+
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const updatedLesson = await courseService.refineLesson(
+      lessonId,
+      userId,
+      instruction,
+      mode,
+    );
+
+    return res.json(updatedLesson);
+  } catch (error: any) {
+    logger.error("Refine Lesson Error:", error);
+    if (error.message.includes("Insufficient credits")) {
+      return res.status(402).json({ message: error.message });
+    }
+    return res.status(500).json({ message: "Failed to refine lesson" });
+  }
+};
 /**
  * ✅ FIXED RESUME CONTROLLER (Robust Input & Idempotency)
  */
@@ -199,6 +292,7 @@ export const resumeCourse = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Failed to resume course" });
   }
 };
+
 /**
  * POST /api/v1/courses/lessons/:lessonId/pdf
  * Handles credit deduction for PDF download

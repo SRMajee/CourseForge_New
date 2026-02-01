@@ -106,7 +106,7 @@ export default function Dashboard() {
     return (
       <Container maxW="container.md" centerContent py={10}>
         <ClarificationForm
-          reason={clarificationData.reason || "Ambiguity Detected"}
+          reason={clarificationData.reason || "Personalization"}
           questions={clarificationData.questions}
           onSubmit={handleResume}
           isLoading={false}

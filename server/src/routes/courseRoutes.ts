@@ -12,8 +12,11 @@ import {
   downloadLessonPDF,
   executeCode,
   saveLessonCode,
+  regenerateCourseStructure,
+  refineLessonContent,
+  getCourseVersion,
+  getLessonVersion,
 } from "../controllers/courseController";
-import { get } from "node:http";
 
 const router = Router();
 
@@ -34,8 +37,11 @@ router.get("/lessons/:lessonId", getLesson);
 
 // 6. Delete Course by id
 router.delete("/:courseId", deleteCourse);
-router.delete("/modules/:moduleId", deleteModule);
+router.post("/:courseId/regenerate", regenerateCourseStructure); // Changed to POST for actionrouter.delete("/modules/:moduleId", deleteModule);
 router.delete("/lessons/:lessonId", deleteLesson);
 router.post("/execute", executeCode);
 router.patch("/lessons/:lessonId/code", saveLessonCode);
+router.post("/lessons/:lessonId/refine", refineLessonContent);
+router.get("/:courseId/history/:versionIndex", getCourseVersion);
+router.get("/lessons/:lessonId/history/:versionIndex", getLessonVersion); // 👈 New Route
 export default router;

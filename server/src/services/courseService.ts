@@ -8,7 +8,10 @@ import { v2 as cloudinary } from "cloudinary";
 import { CREDIT_COSTS } from "../config/credits"; // 👈 Import Config
 import { modelGateway, TaskTier } from "./ModelGateway";
 import { semanticCache } from "../utils/semanticCache";
-import { outlineSchema } from "../ai/parsers/courseSchema";
+import {
+  lessonResponseSchema,
+  outlineSchema,
+} from "../ai/parsers/courseSchema";
 import { researchService } from "./ResearchService";
 import { creditService } from "./creditService"; // 👈 Import
 import { redisClient } from "../config/redis";
@@ -232,6 +235,7 @@ export class CourseService {
     // Directly call generate, injecting the answers
     return this.generateCourse(userId, state.topic, {
       userAnswers: answers,
+      mode: state.mode || "standard",
     });
   }
 
@@ -239,33 +243,253 @@ export class CourseService {
    * TRANSACTIONAL: Creates a Course from AI Syllabus & Deducts Credits
    * (Now called internally by generateCourse)
    */
-  /**
-   * Helper: Pure DB Transaction (No Credit Logic)
-   */
+
+  // --- READ / UTILITY METHODS ---
+
+  async getCourseById(courseId: Object | string) {
+    return await Course.findById(courseId).populate({
+      path: "modules",
+      populate: { path: "lessons", select: "title isEnriched" },
+    });
+  }
+  // ✅ UPDATED: Regenerate with Tag Enforcement & Mode Fix
+  async regenerateCourse(
+    courseId: string,
+    userId: string,
+    instruction: string,
+    mode: "standard" | "pro" = "standard",
+  ) {
+    const course = await Course.findOne({ _id: courseId, userId });
+    if (!course) throw new Error("Course not found");
+
+    const cost = mode === "pro" ? 75 : 25;
+    await this.validateBalance(userId, cost);
+    await creditService.deductCredits(userId, cost);
+
+    try {
+      const tier =
+        mode === "pro" ? TaskTier.LOGIC_REASONING : TaskTier.FAST_UTILITY;
+
+      const systemPrompt = `
+        You are an expert curriculum designer modifying an existing course based on user feedback.
+        CURRENT COURSE: "${course.title}"
+        DESCRIPTION: ${course.description}
+        USER INSTRUCTION: "${instruction}"
+        
+        TASK:
+        1. Analyze the user's feedback.
+        2. Restructure the course modules and lessons to address the feedback.
+        3. Output a VALID JSON object matching the schema.
+        
+        CRITICAL: 
+        - You MUST regenerate 3-5 tags based on the new structure.
+        - Ensure tags are relevant and not empty.
+        
+        REQUIRED JSON STRUCTURE:
+        {
+          "_thought": "Reasoning...",
+          "title": "Updated Title",
+          "description": "Updated Description",
+          "tags": ["tag1", "tag2"],
+          "modules": [
+            { "title": "Module 1", "lessons": ["Lesson 1"] }
+          ]
+        }
+      `;
+
+      const newSyllabus = await modelGateway.generateStructured(
+        systemPrompt,
+        outlineSchema,
+        tier,
+      );
+
+      // ✅ Pass 'instruction' to archive the OLD version before overwriting
+      const updatedCourse = await this.saveCourseToDb(
+        userId,
+        { ...newSyllabus, title: course.title, tags: course.tags },
+        course.thumbnailUrl!,
+        mode,
+        courseId,
+        instruction, // 👈 New: Archive Instruction
+      );
+
+      return updatedCourse;
+    } catch (error) {
+      await creditService.addCredits(userId, cost);
+      throw error;
+    }
+  }
+
+  // ✅ UPDATED: Refine Lesson with Mode History
+  async refineLesson(
+    lessonId: string,
+    userId: string,
+    instruction: string,
+    mode: "standard" | "pro" = "standard",
+  ) {
+    const lesson = await Lesson.findById(lessonId);
+    if (!lesson) throw new Error("Lesson not found");
+
+    const cost = mode === "pro" ? 40 : 15;
+    await this.validateBalance(userId, cost);
+    await creditService.deductCredits(userId, cost);
+
+    try {
+      const tier =
+        mode === "pro" ? TaskTier.CREATIVE_WRITING : TaskTier.FAST_UTILITY;
+      const prompt = `
+        You are an expert educational content creator.
+        
+        TASK: Refine this lesson content based on the instruction.
+        LESSON TITLE: "${lesson.title}"
+        USER INSTRUCTION: "${instruction}"
+        
+        OUTPUT REQUIREMENT:
+        Generate a VALID JSON object containing the full lesson content.
+        
+        JSON STRUCTURE:
+        {
+          "_thought": "Plan for refinement...",
+          "title": "${lesson.title}",
+          "objectives": ["Obj 1", "Obj 2"],
+          "content": [
+            { "type": "heading", "text": "..." },
+            { "type": "paragraph", "text": "..." },
+            { "type": "code", "language": "js", "code": "..." },
+            { "type": "mcq", "question": "...", "options": [], "answer": 0, "explanation": "..." }
+          ]
+        }
+      `;
+
+      const refinedContent = await modelGateway.generateStructured(
+        prompt,
+        lessonResponseSchema,
+        tier,
+      );
+
+      if (!lesson.history) lesson.history = [];
+
+      // ✅ Archive current state with Mode
+      // We assume the lesson has a generationMode field or we default to standard if not tracked before
+      // (Note: You might need to add generationMode to Lesson Schema if not present, otherwise this is just metadata in history)
+      lesson.history.push({
+        timestamp: new Date(),
+        instruction: "Original (Pre-refinement)",
+        content: lesson.content,
+        // @ts-ignore - Assuming Lesson schema will be updated or using Mixed for history
+        generationMode: (lesson as any).generationMode || "standard",
+      });
+
+      lesson.content = refinedContent.content;
+      lesson.objectives = refinedContent.objectives || lesson.objectives;
+      lesson.isEnriched = true;
+      // @ts-ignore
+      lesson.generationMode = mode; // Update current mode
+
+      await lesson.save();
+
+      return lesson;
+    } catch (error) {
+      await creditService.addCredits(userId, cost);
+      throw error;
+    }
+  }
+
+  // ✅ NEW: Get Lesson Version
+  async getLessonVersion(lessonId: string, historyIndex: number) {
+    const lesson = await Lesson.findById(lessonId);
+    if (!lesson || !lesson.history || !lesson.history[historyIndex]) {
+      throw new Error("Version not found");
+    }
+
+    const versionSnapshot = lesson.history[historyIndex];
+
+    // Return synthetic object
+    return {
+      ...lesson.toObject(),
+      content: versionSnapshot.content,
+      isHistoricalView: true,
+      versionDate: versionSnapshot.timestamp,
+      versionInstruction: versionSnapshot.instruction,
+      // @ts-ignore
+      generationMode: versionSnapshot.generationMode || "standard",
+    };
+  }
+  // ✅ UPDATED: Apply Historical Mode to View
+  async getCourseVersion(courseId: string, historyIndex: number) {
+    const course = await Course.findById(courseId);
+    if (!course || !course.history || !course.history[historyIndex]) {
+      throw new Error("Version not found");
+    }
+
+    const versionSnapshot = course.history[historyIndex];
+
+    const modules = await Module.find({
+      _id: { $in: versionSnapshot.modules },
+    }).populate("lessons");
+
+    // Return synthetic object with correct Historical Mode
+    return {
+      ...course.toObject(),
+      modules: modules,
+      isHistoricalView: true,
+      versionDate: versionSnapshot.timestamp,
+      versionInstruction: versionSnapshot.instruction,
+      // 👈 Use the snapshot's mode, fallback to current if missing
+      generationMode: versionSnapshot.generationMode || course.generationMode,
+    };
+  }
+
+  // ✅ UPDATED: Save Logic with Mode Archival
   private async saveCourseToDb(
     userId: string,
     data: any,
     thumbnailUrl: string,
     mode: "standard" | "pro",
+    existingCourseId?: string,
+    archiveInstruction?: string,
   ) {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      const course = new Course({
-        userId,
-        title: data.title,
-        description: data.description,
-        tags: data.tags,
-        modules: [],
-        // ⚡ NEW FIELDS
-        thumbnailUrl: thumbnailUrl,
-        generationMode: mode,
-      });
+      let course;
+
+      if (existingCourseId) {
+        course = await Course.findById(existingCourseId).session(session);
+        if (!course) throw new Error("Course to update not found");
+
+        if (archiveInstruction) {
+          if (!course.history) course.history = [];
+          course.history.push({
+            timestamp: new Date(),
+            instruction: archiveInstruction,
+            modules: [...course.modules],
+            // ✅ Archive the CURRENT mode before it changes
+            generationMode: course.generationMode,
+          });
+        }
+
+        course.modules = [];
+        course.title = data.title;
+        course.description = data.description;
+        course.tags = data.tags; // ✅ Always update tags
+        course.thumbnailUrl = thumbnailUrl;
+        course.generationMode = mode; // ✅ Set new mode
+      } else {
+        course = new Course({
+          userId,
+          title: data.title,
+          description: data.description,
+          tags: data.tags,
+          modules: [],
+          thumbnailUrl: thumbnailUrl,
+          generationMode: mode,
+        });
+      }
 
       const savedCourse = await course.save({ session });
 
-      // ... (Keep existing Module/Lesson creation logic exactly as is) ...
       for (const modData of data.modules) {
         const newModule = new Module({
           course: savedCourse._id,
@@ -302,15 +526,6 @@ export class CourseService {
       session.endSession();
     }
   }
-  // --- READ / UTILITY METHODS ---
-
-  async getCourseById(courseId: Object | string) {
-    return await Course.findById(courseId).populate({
-      path: "modules",
-      populate: { path: "lessons", select: "title isEnriched" },
-    });
-  }
-
   /**
    * ✅ UPDATED: Supports Pagination
    */
@@ -323,7 +538,9 @@ export class CourseService {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .select("title description modules tags createdAt thumbnailUrl generationMode"),
+        .select(
+          "title description modules tags createdAt thumbnailUrl generationMode",
+        ),
       Course.countDocuments({ userId }),
     ]);
 
