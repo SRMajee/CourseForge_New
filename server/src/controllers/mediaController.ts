@@ -3,7 +3,6 @@ import { youtubeService } from "../services/youtubeService";
 import { languageService } from "../services/languageService";
 import logger from "../utils/logger";
 import { lessonService } from "../services/lessonService";
-
 export const searchVideo = async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string;
@@ -14,15 +13,17 @@ export const searchVideo = async (req: Request, res: Response) => {
 
     const videoData = await youtubeService.searchVideo(query);
 
+    // ✅ FIX: Do NOT return 404 if quota is exceeded or video not found.
+    // Return null with 200 OK so the frontend handles it gracefully (e.g. hides the video block).
     if (!videoData) {
-      return res.status(404).json({ message: "No video found" });
+      return res.json(null);
     }
 
     return res.json(videoData);
   } catch (error) {
     logger.error("Controller Error - YouTube Search:", error);
-    // Return 500 but strictly JSON so frontend doesn't crash
-    return res.status(500).json({ message: "YouTube search failed" });
+    // Return null instead of 500 to keep the UI alive
+    return res.json(null);
   }
 };
 
@@ -36,6 +37,7 @@ export const generateLessonAudio = async (req: Request, res: Response) => {
   try {
     const { lessonId } = req.params;
     const language = req.query.lang as string;
+    // @ts-ignore
     const userId = req.user?._id; // Ensure user is attached via middleware
 
     if (!userId) return res.status(401).json({ message: "Unauthorized" });

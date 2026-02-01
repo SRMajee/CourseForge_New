@@ -15,6 +15,11 @@ export interface Course {
   tags: string[];
   modules: Module[]; // Populated by API
 
+  // ✅ Phase 1: UI & Logic Fields
+  thumbnailUrl?: string;
+  generationMode?: "standard" | "pro";
+  feedback?: "like" | "dislike" | null;
+
   createdAt: string;
   updatedAt?: string;
 }

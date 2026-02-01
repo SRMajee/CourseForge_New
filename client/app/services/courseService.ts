@@ -2,11 +2,13 @@ import { api } from "~/services/api";
 import type { Course } from "~/types/course";
 
 // 1. Generate a New Course Outline
-export const generateCourse = async (topic: string): Promise<Course> => {
-  const { data } = await api.post<Course>("/courses/outline", { topic });
+export const generateCourse = async (payload: {
+  topic: string;
+  mode?: "standard" | "pro";
+}) => {
+  const { data } = await api.post("/courses/outline", payload);
   return data;
 };
-
 // 2. Get Single Course by ID
 export const getCourseById = async (id: string): Promise<Course> => {
   const { data } = await api.get<Course>(`/courses/${id}`);

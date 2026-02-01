@@ -27,15 +27,13 @@ import {
   FaCheckCircle,
   FaListUl,
   FaGlobe,
-  FaCoins,
   FaExclamationTriangle,
 } from "react-icons/fa";
 import { LessonContentRenderer } from "~/features/lesson/components/LessonContentRenderer";
 import { LessonPDFExporter } from "~/features/lesson/components/LessonPDFExporter";
-import { useAuthStore } from "~/store/authStore"; // 👈 Import Auth Store
-import { toaster } from "~/components/ui/toaster"; // 👈 Import Toaster
+import { useAuthStore } from "~/store/authStore";
+import { toaster } from "~/components/ui/toaster";
 import { useConfigStore } from "~/store/configStore";
-import { useSocketCredits } from "~/hooks/useSocketCredits";
 
 // Language Options
 const LANGUAGES = [
@@ -48,95 +46,61 @@ const LANGUAGES = [
   { value: "es", label: "Spanish" },
 ];
 
-// Define Costs
-
 export default function LessonPage() {
   const getCost = useConfigStore((state) => state.getCost);
-
-  // Dynamic Cost!
   const COST_LESSON_CONTENT = getCost("generateLesson");
   const COST_AUDIO_GEN = getCost("generateAudio");
-  const COST_REGENERATE = getCost("regenerate");
 
   const { courseId, lessonId } = useParams();
   const navigate = useNavigate();
-
-  // 1. Fetch User & Credits
-  const { user, setUser } = useAuthStore();
+  const { user } = useAuthStore();
   const credits = user?.credits || 0;
 
-  // 2. Fetch Data
   const { data: lesson, isLoading: isLessonLoading } = useLesson(lessonId);
-
-  // 3. Action Hooks
   const { mutate: generate, isPending: isGenerating } =
     useGenerateLesson(courseId);
-
   const { mutate: generateAudio, isPending: isAudioGenerating } =
     useGenerateAudio();
-
-  // 4. Video Search
   const { data: videoData } = useVideoSearch(lesson?.title || "", !!lesson);
 
-  // 5. Local State
   const [selectedLang, setSelectedLang] = useState("hinglish");
-
-  // 6. Compute Active Audio URL
   const currentAudioUrl = lesson?.audioUrls?.[selectedLang];
 
-  // 7. Handle Lesson Generation (Content)
   const handleGenerateContent = () => {
     if (credits < COST_LESSON_CONTENT) {
       toaster.create({ title: "Insufficient credits", type: "error" });
       return;
     }
-
     generate(lessonId!, {
-      onSuccess: () => {
-        // Instant UI Update
-        // if (user)
-        //   setUser({ ...user, credits: user.credits - COST_LESSON_CONTENT });
-        //
-        toaster.create({ title: "Lesson content generated!", type: "success" });
-      },
+      onSuccess: () =>
+        toaster.create({ title: "Lesson content generated!", type: "success" }),
     });
   };
 
-  // 8. Handle Audio Generation
   const handleGenerateAudio = () => {
-    // Determine cost: Full price for new, discounted for regen
-    const cost = currentAudioUrl ? COST_REGENERATE : COST_AUDIO_GEN;
-
+    const cost = COST_AUDIO_GEN;
     if (credits < cost) {
       toaster.create({ title: "Insufficient credits", type: "error" });
       return;
     }
-
     if (lessonId) {
       generateAudio(
         { lessonId, language: selectedLang },
         {
-          onSuccess: () => {
-            // Instant UI Update
-            // if (user) setUser({ ...user, credits: user.credits - cost });
-            toaster.create({ title: "Audio generated!", type: "success" });
-          },
+          onSuccess: () =>
+            toaster.create({ title: "Audio generated!", type: "success" }),
         },
       );
     }
   };
 
-  // --- Loading State ---
-  if (isLessonLoading) {
+  if (isLessonLoading)
     return (
       <Center h="100vh">
         <Spinner size="xl" color="blue.500" />
       </Center>
     );
-  }
-
-  // --- Not Found State ---
-  if (!lesson) {
+  if (!lesson)
     return (
       <Center h="100vh">
         <Text fontSize="lg" color="fg.muted">
@@ -144,7 +108,6 @@ export default function LessonPage() {
         </Text>
       </Center>
     );
-  }
 
   const hasContent =
     lesson.content &&
@@ -153,33 +116,47 @@ export default function LessonPage() {
 
   return (
     <Container maxW="container.lg" py={8}>
-      <Button variant="ghost" mb={4} onClick={() => navigate(-1)}>
+      <Button
+        variant="ghost"
+        mb={4}
+        onClick={() => navigate(-1)}
+        _hover={{ bg: "whiteAlpha.200" }}
+      >
         <FaArrowLeft /> Back to Course
       </Button>
 
-      <VStack align="stretch" gap={6}>
+      <VStack align="stretch" gap={8}>
         {/* --- Header --- */}
         <Box>
-          <Heading size="3xl" mb={3}>
+          <Heading
+            size="3xl"
+            mb={4}
+            fontWeight="black"
+            letterSpacing="tight"
+            lineHeight="1.1"
+          >
             {lesson.title}
           </Heading>
-          <HStack>
+          <HStack wrap="wrap" gap={3}>
             <Badge
               colorPalette={hasContent ? "green" : "yellow"}
               size="lg"
               variant="surface"
+              rounded="full"
+              px={3}
             >
-              {hasContent ? "Ready to Learn" : "Draft Mode"}
+              {hasContent ? "Ready" : "Draft"}
             </Badge>
             {videoData && (
-              <Badge colorPalette="blue" variant="outline">
+              <Badge
+                colorPalette="blue"
+                variant="outline"
+                rounded="full"
+                px={3}
+              >
                 Video Available
               </Badge>
             )}
-            {/* Show Current Balance Badge */}
-            {/* <Badge colorPalette="purple" variant="solid" size="lg">
-              Credits: {credits}
-            </Badge> */}
 
             {hasContent && (
               <LessonPDFExporter
@@ -200,14 +177,17 @@ export default function LessonPage() {
         {/* --- STATE 1: NO CONTENT --- */}
         {!hasContent ? (
           <Center
-            p={12}
-            borderWidth="2px"
-            borderStyle="dashed"
-            borderColor="border"
-            borderRadius="xl"
+            p={16}
+            // ✅ LIQUID GLASS EMPTY STATE
+            bg="rgba(255, 255, 255, 0.4)"
+            _dark={{ bg: "rgba(20, 20, 20, 0.4)" }}
+            backdropFilter="blur(20px)"
+            borderWidth="1px"
+            borderColor="whiteAlpha.300"
+            borderRadius="3xl"
             flexDirection="column"
             gap={6}
-            bg="bg.subtle"
+            shadow="xl"
           >
             <Heading size="md" color="fg.muted">
               This lesson is currently empty.
@@ -217,7 +197,7 @@ export default function LessonPage() {
               content, find relevant videos, and prepare audio notes.
             </Text>
 
-            <VStack gap={2}>
+            <VStack gap={4}>
               <Button
                 size="xl"
                 colorPalette="purple"
@@ -225,11 +205,15 @@ export default function LessonPage() {
                 loading={isGenerating}
                 loadingText="AI is writing..."
                 disabled={credits < COST_LESSON_CONTENT}
+                rounded="full"
+                shadow="lg"
+                px={8}
+                _hover={{ transform: "scale(1.05)" }}
               >
-                <FaMagic /> Generate Lesson Content (-{COST_LESSON_CONTENT})
+                <FaMagic /> Generate Content (-{COST_LESSON_CONTENT})
               </Button>
               {credits < COST_LESSON_CONTENT && (
-                <HStack color="red.500" fontSize="sm">
+                <HStack color="red.400" fontSize="sm">
                   <FaExclamationTriangle />
                   <Text>Insufficient credits</Text>
                 </HStack>
@@ -238,56 +222,60 @@ export default function LessonPage() {
           </Center>
         ) : (
           /* --- STATE 2: CONTENT VIEW --- */
-          <VStack gap={8} align="stretch">
-            {/* 1. Learning Objectives */}
+          <VStack gap={10} align="stretch">
+            {/* 1. Learning Objectives (Blue Glass) */}
             {lesson.objectives && lesson.objectives.length > 0 && (
               <Box
-                bg="blue.50"
-                _dark={{ bg: "blue.900/20" }}
-                p={6}
-                borderRadius="lg"
-                borderLeftWidth="4px"
-                borderLeftColor="blue.500"
+                bg="blue.500/5"
+                backdropFilter="blur(12px)"
+                p={8}
+                borderRadius="2xl"
+                borderWidth="1px"
+                borderColor="blue.500/20"
+                shadow="sm"
               >
-                <HStack mb={4} gap={3}>
-                  <Icon color="blue.600" fontSize="lg">
+                <HStack mb={6} gap={3}>
+                  <Icon color="blue.400" fontSize="xl">
                     <FaListUl />
                   </Icon>
                   <Heading
                     size="sm"
                     textTransform="uppercase"
-                    color="blue.700"
-                    _dark={{ color: "blue.300" }}
-                    letterSpacing="wide"
+                    color="blue.500"
+                    letterSpacing="wider"
                   >
                     In this lesson, you will learn:
                   </Heading>
                 </HStack>
 
-                <VStack align="start" gap={3}>
+                <VStack align="start" gap={4}>
                   {lesson.objectives.map((obj: string, index: number) => (
                     <HStack key={index} gap={3} align="start">
-                      <Icon color="green.500" mt={1}>
+                      <Icon color="green.400" mt={1}>
                         <FaCheckCircle />
                       </Icon>
-                      <Text color="fg.emphasized">{obj}</Text>
+                      <Text fontSize="lg" color="fg.DEFAULT">
+                        {obj}
+                      </Text>
                     </HStack>
                   ))}
                 </VStack>
               </Box>
             )}
 
-            {/* 2. YouTube Embed */}
+            {/* 2. YouTube Embed (Glass Container) */}
             {videoData && (
               <Box
-                borderRadius="xl"
+                borderRadius="2xl"
                 overflow="hidden"
-                boxShadow="lg"
+                boxShadow="2xl"
+                borderWidth="1px"
+                borderColor="whiteAlpha.200"
                 bg="black"
               >
                 <iframe
                   width="100%"
-                  height="480px"
+                  height="500px"
                   src={`https://www.youtube.com/embed/${videoData.videoId}`}
                   title="YouTube video player"
                   frameBorder="0"
@@ -303,45 +291,42 @@ export default function LessonPage() {
               lessonId={lessonId!}
             />
 
-            {/* 4. Audio Section */}
+            {/* 4. Audio Section (Orange Glass) */}
             <Box
-              p={6}
-              bg={{ base: "orange.50", _dark: "orange.900/20" }}
-              borderRadius="lg"
+              p={8}
+              bg="orange.500/5"
+              backdropFilter="blur(12px)"
+              borderRadius="2xl"
               borderWidth="1px"
-              borderColor={{ base: "orange.200", _dark: "orange.800" }}
+              borderColor="orange.500/20"
+              shadow="lg"
             >
-              <HStack justify="space-between" wrap="wrap" gap={4}>
-                <VStack align="start" gap={1}>
+              <HStack justify="space-between" wrap="wrap" gap={6}>
+                <VStack align="start" gap={2}>
                   <HStack>
-                    <Icon color="orange.600">
+                    <Icon color="orange.400" fontSize="xl">
                       <FaGlobe />
                     </Icon>
-                    <Heading
-                      size="sm"
-                      color={{ base: "orange.800", _dark: "orange.300" }}
-                    >
+                    <Heading size="md" color="orange.400">
                       Audio Summary ({selectedLang})
                     </Heading>
                   </HStack>
-                  <Text
-                    fontSize="sm"
-                    color={{ base: "orange.700", _dark: "orange.400" }}
-                  >
+                  <Text fontSize="sm" color="fg.muted">
                     {currentAudioUrl
                       ? "Audio ready! Click play to listen."
                       : `No audio for ${selectedLang} yet.`}
                   </Text>
                 </VStack>
 
-                <VStack align="end" gap={2} w={{ base: "full", md: "auto" }}>
+                <VStack align="end" gap={4} w={{ base: "full", md: "auto" }}>
                   <HStack>
-                    <NativeSelect.Root size="sm" width="140px" variant="subtle">
+                    <NativeSelect.Root size="sm" width="160px" variant="subtle">
                       <NativeSelect.Field
                         value={selectedLang}
                         onChange={(e) => setSelectedLang(e.target.value)}
-                        bg="white"
-                        _dark={{ bg: "gray.800" }}
+                        bg="whiteAlpha.100"
+                        _dark={{ bg: "blackAlpha.300" }}
+                        rounded="lg"
                       >
                         {LANGUAGES.map((lang) => (
                           <option key={lang.value} value={lang.value}>
@@ -350,17 +335,15 @@ export default function LessonPage() {
                         ))}
                       </NativeSelect.Field>
                     </NativeSelect.Root>
-
-                    {/* REGENERATE Button */}
                   </HStack>
 
                   {/* Player OR Generate Button */}
                   {currentAudioUrl ? (
-                    <Box w={{ base: "full", md: "300px" }}>
+                    <Box w={{ base: "full", md: "350px" }}>
                       <audio
                         key={currentAudioUrl}
                         controls
-                        style={{ width: "100%" }}
+                        style={{ width: "100%", borderRadius: "8px" }}
                         src={currentAudioUrl}
                       >
                         Your browser does not support the audio element.
@@ -375,15 +358,15 @@ export default function LessonPage() {
                       loading={isAudioGenerating}
                       loadingText="Generating..."
                       disabled={credits < COST_AUDIO_GEN}
+                      rounded="full"
+                      px={6}
                     >
-                      <FaPlay /> Generate {selectedLang} Audio (-
-                      {COST_AUDIO_GEN})
+                      <FaPlay /> Generate Audio (-{COST_AUDIO_GEN})
                     </Button>
                   )}
 
-                  {/* Warning if broke */}
                   {!currentAudioUrl && credits < COST_AUDIO_GEN && (
-                    <Text fontSize="xs" color="red.500">
+                    <Text fontSize="xs" color="red.400">
                       Not enough credits
                     </Text>
                   )}

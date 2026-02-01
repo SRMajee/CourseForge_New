@@ -5,120 +5,171 @@ import {
   Badge,
   HStack,
   IconButton,
-  Stack,
+  Icon,
+  AspectRatio,
+  VStack,
+  Image,
 } from "@chakra-ui/react";
-import { FaTrash, FaBookOpen, FaCalendarAlt } from "react-icons/fa";
+import { FaTrash, FaBookOpen } from "react-icons/fa";
 import { useDeleteCourse } from "../hooks/useCourseMutations";
 import { Link } from "react-router";
 import type { Course } from "~/types/course";
 
-// Helper to stop click propagation
 const handleDelete = (e: React.MouseEvent, id: string, deleteFn: any) => {
   e.preventDefault();
   e.stopPropagation();
-  if (
-    confirm(
-      "Are you sure you want to delete this course? This action cannot be undone.",
-    )
-  ) {
-    deleteFn(id);
-  }
+  if (confirm("Delete this course?")) deleteFn(id);
 };
 
 export const CourseCard = ({ course }: { course: Course }) => {
   const { mutate: deleteCourse, isPending } = useDeleteCourse();
-  // console.log("CourseCard rendering for course:", course);
-  // Format date safely
-  const createdDate = course.createdAt
-    ? new Date(course.createdAt).toLocaleDateString()
-    : "Unknown date";
+  const isPro = course.generationMode === "pro";
+  // console.log("Course Data:", course);
 
   return (
     <Link to={`/course/${course._id}`} style={{ textDecoration: "none" }}>
       <Box
-        className="group" // 👈 1. Add "group" class for hover targeting
-        p={5}
-        shadow="md"
-        borderWidth="1px"
-        borderRadius="lg"
-        bg="bg.panel"
-        transition="all 0.2s"
-        _hover={{
-          shadow: "lg",
-          borderColor: "brand.500",
-          transform: "translateY(-2px)",
-        }}
+        className="group"
         position="relative"
-        h="full"
-        display="flex"
-        flexDirection="column"
+        borderRadius="2xl"
+        overflow="hidden"
+        bg="gray.900"
+        shadow="lg"
+        transition="all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)"
+        _hover={{
+          transform: "translateY(-4px)",
+          shadow: "2xl",
+          zIndex: 10,
+        }}
       >
-        {/* Top Row: Status Badge + Delete Button */}
-        <HStack justify="flex-end" mb={3}>
-          {/* <Badge colorPalette={course.isPublished ? "green" : "yellow"}>
-            {course.isPublished ? "Published" : "Draft"}
-          </Badge> */}
-
-          {/* Delete Button - Hidden by default, Visible on Hover */}
-          <IconButton
-            aria-label="Delete Course"
-            size="xs"
-            colorPalette="red"
-            variant="ghost"
-            loading={isPending}
-            onClick={(e) => handleDelete(e, course._id, deleteCourse)}
-            opacity={0} // Hidden initially
-            _groupHover={{ opacity: 1 }} // Visible when parent group is hovered
-            transition="opacity 0.2s"
-          >
-            <FaTrash />
-          </IconButton>
-        </HStack>
-
-        {/* Title & Description */}
-        <Heading size="md" mb={2} truncate>
-          {course.title}
-        </Heading>
-
-        <Text color="fg.muted" fontSize="sm" lineClamp={2} mb={4} flex="1">
-          {course.description || "No description provided."}
-        </Text>
-
-        {/* Tags Row */}
-        {course.tags && course.tags.length > 0 && (
-          <HStack gap={2} mb={4} wrap="wrap">
-            {course.tags.slice(0, 3).map((tag: string) => (
-              <Badge key={tag} variant="surface" colorPalette="blue" size="sm">
-                {tag}
-              </Badge>
-            ))}
-            {course.tags.length > 3 && (
-              <Text fontSize="xs" color="fg.muted">
-                +{course.tags.length - 3} more
-              </Text>
+        <AspectRatio ratio={16 / 9}>
+          <Box position="relative" overflow="hidden" w="full" h="full">
+            {/* 1. BACKGROUND IMAGE */}
+            {/* Using Image component is more robust for URLs than bgImage */}
+            {course.thumbnailUrl ? (
+              <Image
+                src={course.thumbnailUrl}
+                alt={course.title}
+                objectFit="cover"
+                w="full"
+                h="full"
+                position="absolute"
+                inset="0"
+                transition="transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1)"
+                _groupHover={{ transform: "scale(1.1)" }}
+              />
+            ) : (
+              // Fallback Gradient
+              <Box
+                w="full"
+                h="full"
+                position="absolute"
+                inset="0"
+                bgGradient="linear(to-br, gray.800, gray.900)"
+              />
             )}
-          </HStack>
-        )}
 
-        {/* Footer: Date & Module Count */}
-        <HStack
-          color="fg.subtle"
-          fontSize="xs"
-          pt={3}
-          borderTopWidth="1px"
-          borderColor="border.muted"
-          justify="space-between"
-        >
-          <HStack>
-            <FaBookOpen />
-            <Text>{course.modules?.length || 0} Modules</Text>
-          </HStack>
+            {/* 2. GRADIENT OVERLAY (Text Readability) */}
+            <Box
+              position="absolute"
+              inset="0"
+              bgGradient="linear(to-t, blackAlpha.900 0%, blackAlpha.600 50%, transparent 100%)"
+              opacity={0.9}
+              transition="opacity 0.3s"
+              pointerEvents="none" // Ensure clicks pass through
+            />
 
-          <HStack>
-            <FaCalendarAlt />
-            <Text>{createdDate}</Text>
-          </HStack>
-        </HStack>
+            {/* 3. FLOATING BADGES */}
+            <HStack
+              position="absolute"
+              top={3}
+              left={3}
+              right={3}
+              justify="space-between"
+              zIndex={2}
+            >
+              {isPro ? (
+                <Badge
+                  colorPalette="purple"
+                  variant="solid"
+                  size="xs"
+                  px={2}
+                  rounded="md"
+                  bg="purple.600"
+                  color="white"
+                  boxShadow="0 2px 10px rgba(0,0,0,0.5)"
+                >
+                  PRO
+                </Badge>
+              ) : (
+                <Box /> // Spacer
+              )}
+
+              <IconButton
+                aria-label="Delete"
+                size="xs"
+                colorPalette="red"
+                variant="solid"
+                bg="red.500/80"
+                loading={isPending}
+                onClick={(e) => handleDelete(e, course._id, deleteCourse)}
+                opacity={0}
+                _groupHover={{ opacity: 1 }}
+                transition="opacity 0.2s"
+                rounded="full"
+                _hover={{ bg: "red.600", transform: "scale(1.1)" }}
+              >
+                <FaTrash />
+              </IconButton>
+            </HStack>
+
+            {/* 4. CONTENT INFO */}
+            <VStack
+              position="absolute"
+              bottom={0}
+              left={0}
+              w="full"
+              p={5}
+              align="start"
+              gap={1}
+              zIndex={2}
+            >
+              <Heading
+                size="md"
+                color="white"
+                fontWeight="bold"
+                lineHeight="shorter"
+                truncate
+                textShadow="0 2px 4px rgba(0,0,0,0.8)"
+              >
+                {course.title}
+              </Heading>
+
+              <Text
+                fontSize="xs"
+                color="gray.300"
+                truncate
+                lineHeight="tall"
+                maxW="95%"
+              >
+                {course.description || "No description available."}
+              </Text>
+
+              <HStack
+                mt={2}
+                fontSize="xs"
+                color="gray.400"
+                fontWeight="medium"
+                gap={3}
+              >
+                <HStack gap={1}>
+                  <Icon as={FaBookOpen} />
+                  <Text>{course.modules?.length || 0} Modules</Text>
+                </HStack>
+              </HStack>
+            </VStack>
+          </Box>
+        </AspectRatio>
       </Box>
     </Link>
   );

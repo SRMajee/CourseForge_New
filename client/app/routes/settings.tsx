@@ -7,15 +7,15 @@ import {
   Avatar,
   Button,
   Input,
-  Card,
   Spinner,
   Badge,
   Table,
   Icon,
+  Container,
 } from "@chakra-ui/react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useAuthStore } from "~/store/authStore";
-import { useConfigStore } from "~/store/configStore"; // 👈 Import Config Store
+import { useConfigStore } from "~/store/configStore";
 import { useState, useEffect } from "react";
 import { api } from "~/services/api";
 import { toaster } from "~/components/ui/toaster";
@@ -26,7 +26,7 @@ import { ManageSubscriptionModal } from "~/features/subscription/components/Mana
 export default function Settings() {
   const { user: auth0User, isLoading: isAuthLoading } = useAuth0();
   const { user: dbUser, setUser } = useAuthStore();
-  const { config, isLoading: isConfigLoading } = useConfigStore(); // 👈 Use Config
+  const { config, isLoading: isConfigLoading } = useConfigStore();
 
   const [name, setName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -39,13 +39,10 @@ export default function Settings() {
   }, [dbUser, auth0User]);
 
   const user = dbUser || auth0User;
-
-  //  Dynamic Plan Logic (Case-insensitive safety)
   const isPro =
     dbUser?.planType?.toUpperCase() === "PRO" ||
     dbUser?.subscriptionStatus === "active";
 
-  //  Generate COST_MENU dynamically from Store
   const COST_MENU = [
     {
       action: "Create Course Outline",
@@ -91,194 +88,244 @@ export default function Settings() {
     }
   };
 
-  if (isAuthLoading || isConfigLoading) {
+  if (isAuthLoading || isConfigLoading)
     return (
       <Box p={10}>
         <Spinner size="xl" />
       </Box>
     );
-  }
-
   if (!user) return null;
 
+  // ✅ LIQUID GLASS PANEL
+  const GlassPanel = ({ children }: { children: React.ReactNode }) => (
+    <Box
+      p={8}
+      rounded="3xl"
+      bg="whiteAlpha.600"
+      _dark={{ bg: "whiteAlpha.50" }}
+      backdropFilter="blur(24px) saturate(180%)"
+      borderWidth="1px"
+      borderColor="whiteAlpha.300"
+      shadow="xl"
+      transition="transform 0.2s"
+    >
+      {children}
+    </Box>
+  );
+
   return (
-    <Box maxW="container.md">
-      <Heading size="2xl" mb={2}>
-        Settings
-      </Heading>
-      <Text color="fg.muted" mb={8}>
-        Manage your account and billing.
-      </Text>
+    <Container maxW="container.md" py={10}>
+      <VStack align="start" mb={8}>
+        <Heading size="3xl">Settings</Heading>
+        <Text color="fg.muted" fontSize="lg">
+          Manage your account and billing preferences.
+        </Text>
+      </VStack>
 
-      <VStack gap={8} align="stretch">
-        {/* --- PROFILE CARD --- */}
-        <Card.Root variant="outline">
-          <Card.Header>
+      <VStack gap={6} align="stretch">
+        <GlassPanel>
+          <HStack justify="space-between" mb={6}>
             <Heading size="md">Profile Details</Heading>
-          </Card.Header>
-          <Card.Body>
-            <HStack gap={6} align="start">
-              <Avatar.Root size="2xl">
-                <Avatar.Fallback>
-                  {user.name?.substring(0, 2).toUpperCase()}
-                </Avatar.Fallback>
-                <Avatar.Image src={user.picture} />
-              </Avatar.Root>
-              <VStack flex="1" align="stretch">
-                <Box>
-                  <Text fontSize="sm" fontWeight="medium">
-                    Full Name
-                  </Text>
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </Box>
-                <Box>
-                  <Text fontSize="sm" fontWeight="medium">
-                    Email
-                  </Text>
-                  <Input defaultValue={user.email} disabled bg="bg.subtle" />
-                </Box>
-              </VStack>
-            </HStack>
-          </Card.Body>
-          <Card.Footer>
-            <HStack w="full" justify="flex-end">
-              <Button
-                colorPalette="blue"
-                onClick={handleSave}
-                loading={isSaving}
-              >
-                Save Changes
-              </Button>
-            </HStack>
-          </Card.Footer>
-        </Card.Root>
+          </HStack>
+          <HStack gap={6} align="start" flexWrap="wrap">
+            <Avatar.Root size="2xl" ring="4px" ringColor="whiteAlpha.400">
+              <Avatar.Fallback>
+                {user.name?.substring(0, 2).toUpperCase()}
+              </Avatar.Fallback>
+              <Avatar.Image src={user.picture} />
+            </Avatar.Root>
+            <VStack flex="1" align="stretch" gap={4}>
+              <Box>
+                <Text fontSize="sm" fontWeight="bold" mb={1} color="fg.subtle">
+                  Display Name
+                </Text>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  variant="subtle"
+                  bg="blackAlpha.50"
+                  _dark={{ bg: "whiteAlpha.100" }}
+                  rounded="xl"
+                />
+              </Box>
+              <Box>
+                <Text fontSize="sm" fontWeight="bold" mb={1} color="fg.subtle">
+                  Email Address
+                </Text>
+                <Input
+                  defaultValue={user.email}
+                  disabled
+                  variant="subtle"
+                  opacity={0.7}
+                  rounded="xl"
+                />
+              </Box>
+              <Box pt={2}>
+                <Button
+                  colorPalette="blue"
+                  onClick={handleSave}
+                  loading={isSaving}
+                  rounded="xl"
+                  px={8}
+                >
+                  Save Changes
+                </Button>
+              </Box>
+            </VStack>
+          </HStack>
+        </GlassPanel>
 
-        {/* --- PLAN & CREDITS CARD --- */}
-        <Card.Root variant="outline">
-          <Card.Header>
-            <HStack justify="space-between">
-              <Heading size="md">Plan & Credits</Heading>
-              {/* 👇 Dynamic Badge */}
-              <Badge
-                colorPalette={isPro ? "purple" : "blue"}
-                variant="solid"
-                size="lg"
-              >
-                {isPro ? "PRO PLAN" : "FREE PLAN"}
-              </Badge>
-            </HStack>
-          </Card.Header>
-          <Card.Body>
-            <HStack
-              justify="space-between"
-              bg={isPro ? "purple.50" : "blue.50"}
-              _dark={{ bg: isPro ? "purple.900/20" : "blue.900/20" }}
-              p={6}
-              rounded="xl"
-              borderWidth="1px"
-              borderColor={isPro ? "purple.100" : "blue.100"}
+        <GlassPanel>
+          <HStack justify="space-between" mb={6}>
+            <Heading size="md">Plan & Usage</Heading>
+            <Badge
+              colorPalette={isPro ? "purple" : "blue"}
+              variant="solid"
+              size="lg"
+              px={3}
+              rounded="full"
             >
-              <VStack align="start" gap={1}>
-                <HStack color={isPro ? "purple.600" : "blue.600"}>
-                  {isPro ? <FaCrown /> : <FaCoins />}
-                  <Text fontWeight="bold">
-                    {isPro ? "Pro Status Active" : "Available Credits"}
-                  </Text>
-                </HStack>
-                <Text fontSize="sm" color="fg.muted">
-                  {isPro
-                    ? `Your monthly credits (${config?.pricing.pro.credits || 1000}) reset on the billing date.`
-                    : `Upgrade to Pro for ${config?.pricing.pro.credits || 1000} credits/mo & GPT-4 Access.`}
-                </Text>
-              </VStack>
+              {isPro ? "PRO PLAN" : "FREE PLAN"}
+            </Badge>
+          </HStack>
 
-              <VStack align="end" gap={0}>
-                <Heading size="3xl" color={isPro ? "purple.600" : "blue.600"}>
-                  {dbUser?.credits || 0}
-                </Heading>
-                <Text fontSize="xs" fontWeight="bold" color="fg.muted">
-                  BALANCE
+          <HStack
+            justify="space-between"
+            bgGradient={isPro ? "to-r" : "to-r"}
+            gradientFrom={isPro ? "purple.500/10" : "blue.500/10"}
+            gradientTo={isPro ? "purple.500/5" : "blue.500/5"}
+            p={6}
+            rounded="2xl"
+            borderWidth="1px"
+            borderColor={isPro ? "purple.500/20" : "blue.500/20"}
+            mb={6}
+          >
+            <VStack align="start" gap={1}>
+              <HStack color={isPro ? "purple.400" : "blue.400"}>
+                {isPro ? <FaCrown /> : <FaCoins />}
+                <Text fontWeight="bold" fontSize="lg">
+                  {isPro ? "Pro Active" : "Available Credits"}
                 </Text>
-              </VStack>
-            </HStack>
-          </Card.Body>
-          <Card.Footer>
-            <VStack w="full" gap={2}>
-              {/* ✅ SHOW THIS IF ALREADY PRO */}
-              {isPro ? (
-                <>
+              </HStack>
+              <Text fontSize="sm" color="fg.muted" maxW="300px">
+                {isPro
+                  ? `Your monthly credits reset on the billing date.`
+                  : `Upgrade to Pro for more credits & GPT-4 access.`}
+              </Text>
+            </VStack>
+
+            <VStack align="end" gap={0}>
+              <Heading size="4xl" color={isPro ? "purple.400" : "blue.400"}>
+                {dbUser?.credits || 0}
+              </Heading>
+              <Text
+                fontSize="xs"
+                fontWeight="bold"
+                letterSpacing="widest"
+                opacity={0.6}
+              >
+                BALANCE
+              </Text>
+            </VStack>
+          </HStack>
+
+          <VStack w="full" gap={3}>
+            {isPro ? (
+              <>
+                <Button
+                  w="full"
+                  variant="subtle"
+                  colorPalette="green"
+                  disabled
+                  rounded="xl"
+                >
+                  <FaCheckCircle /> You are a PRO Member
+                </Button>
+                <HStack w="full">
                   <Button
-                    w="full"
-                    variant="surface"
-                    colorPalette="green"
-                    disabled
+                    flex={1}
+                    variant="outline"
+                    onClick={() => setSubModalOpen(true)}
+                    rounded="xl"
                   >
-                    <FaCheckCircle /> You are already a PRO Member
-                  </Button>
-                  <Button variant="ghost" onClick={() => setSubModalOpen(true)}>
                     Manage Plan
                   </Button>
                   <Button
-                    w="full"
+                    flex={1}
                     colorPalette="purple"
-                    variant="outline"
+                    variant="surface"
                     onClick={() => setTopUpOpen(true)}
+                    rounded="xl"
                   >
-                    <FaCoins /> Buy Extra Top-up Credits
+                    <FaCoins /> Buy Credits
                   </Button>
-                </>
-              ) : (
-                /* ✅ SHOW THIS IF FREE */
-                <Button
-                  w="full"
-                  colorPalette="yellow"
-                  onClick={() => setTopUpOpen(true)}
-                >
-                  <FaCrown /> Upgrade to Pro
-                </Button>
-              )}
-            </VStack>
-          </Card.Footer>
-        </Card.Root>
+                </HStack>
+              </>
+            ) : (
+              <Button
+                w="full"
+                colorPalette="blue"
+                size="lg"
+                onClick={() => setTopUpOpen(true)}
+                rounded="xl"
+                shadow="md"
+              >
+                <FaCrown /> Upgrade to Pro
+              </Button>
+            )}
+          </VStack>
+        </GlassPanel>
 
-        {/* --- COST TABLE (Now powered by Backend Config) --- */}
-        <Card.Root variant="outline">
-          <Card.Header>
-            <HStack gap={2}>
-              <Icon color="gray.500">
-                <FaInfoCircle />
-              </Icon>
-              <Heading size="md">Credit Usage Guide</Heading>
-            </HStack>
-          </Card.Header>
-          <Card.Body>
-            <Table.Root size="sm" striped>
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeader>Action</Table.ColumnHeader>
-                  <Table.ColumnHeader>Description</Table.ColumnHeader>
-                  <Table.ColumnHeader textAlign="end">Cost</Table.ColumnHeader>
+        <GlassPanel>
+          <HStack gap={2} mb={4}>
+            <Icon color="fg.muted">
+              <FaInfoCircle />
+            </Icon>
+            <Heading
+              size="sm"
+              color="fg.muted"
+              textTransform="uppercase"
+              letterSpacing="wide"
+            >
+              Credit Usage Guide
+            </Heading>
+          </HStack>
+
+          <Table.Root size="sm" interactive>
+            <Table.Header>
+              <Table.Row bg="transparent">
+                <Table.ColumnHeader color="fg.subtle" pl={0}>
+                  Action
+                </Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.subtle">
+                  Description
+                </Table.ColumnHeader>
+                <Table.ColumnHeader textAlign="end" color="fg.subtle" pr={0}>
+                  Cost
+                </Table.ColumnHeader>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {COST_MENU.map((item) => (
+                <Table.Row
+                  key={item.action}
+                  bg="transparent"
+                  _hover={{ bg: "whiteAlpha.100" }}
+                >
+                  <Table.Cell fontWeight="medium" pl={0}>
+                    {item.action}
+                  </Table.Cell>
+                  <Table.Cell color="fg.muted">{item.desc}</Table.Cell>
+                  <Table.Cell textAlign="end" pr={0}>
+                    <Badge colorPalette="gray" variant="surface" rounded="md">
+                      {item.cost}
+                    </Badge>
+                  </Table.Cell>
                 </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {COST_MENU.map((item) => (
-                  <Table.Row key={item.action}>
-                    <Table.Cell fontWeight="medium">{item.action}</Table.Cell>
-                    <Table.Cell color="fg.muted">{item.desc}</Table.Cell>
-                    <Table.Cell textAlign="end">
-                      <Badge colorPalette="gray" variant="surface">
-                        {item.cost}
-                      </Badge>
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-            </Table.Root>
-          </Card.Body>
-        </Card.Root>
+              ))}
+            </Table.Body>
+          </Table.Root>
+        </GlassPanel>
       </VStack>
 
       <TopUpModal
@@ -290,6 +337,6 @@ export default function Settings() {
         isOpen={isSubModalOpen}
         onClose={() => setSubModalOpen(false)}
       />
-    </Box>
+    </Container>
   );
 }

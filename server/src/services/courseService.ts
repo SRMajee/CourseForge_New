@@ -180,7 +180,20 @@ export class CourseService {
           .setCachedOutline(cacheKey, syllabusData)
           .catch((e) => logger.error("Cache Write Error", e));
       }
-      const thumbnailUrl = await imageService.getCourseThumbnail(topic);
+      // 7. Parallel Task: Fetch Thumbnail
+      // ✅ FIX: Robust error handling for image fetching
+      let thumbnailUrl =
+        "https://images.unsplash.com/photo-1557682250-33bd709cbe85"; // Hard default
+      try {
+        const fetchedUrl = await imageService.getCourseThumbnail(topic);
+        if (fetchedUrl) thumbnailUrl = fetchedUrl;
+      } catch (imgError) {
+        logger.error(
+          "⚠️ Image Service Critical Fail (Using Hard Default):",
+          imgError,
+        );
+        // Continue execution - do not throw
+      }
       // 6. Save to DB (Pure Persistence)
       const course = await this.saveCourseToDb(
         userId,
@@ -310,7 +323,7 @@ export class CourseService {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .select("title description modules tags createdAt"),
+        .select("title description modules tags createdAt thumbnailUrl generationMode"),
       Course.countDocuments({ userId }),
     ]);
 

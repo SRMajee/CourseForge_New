@@ -9,7 +9,7 @@ import {
   Badge,
   VStack,
 } from "@chakra-ui/react";
-import { FaPlay, FaTerminal, FaSave, FaCheck, FaCopy } from "react-icons/fa"; // 👈 Added FaCopy back
+import { FaPlay, FaTerminal, FaSave, FaCheck, FaCopy } from "react-icons/fa";
 import { CourseService } from "~/services/courseService";
 import { toaster } from "~/components/ui/toaster";
 
@@ -30,7 +30,7 @@ export const CodeSandbox = ({
   const [output, setOutput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [copied, setCopied] = useState(false); // 👈 Track copy state
+  const [copied, setCopied] = useState(false);
 
   const handleRun = async () => {
     setIsRunning(true);
@@ -45,12 +45,9 @@ export const CodeSandbox = ({
     }
   };
 
-  // Inside CodeSandbox component...
-
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // ✅ Pass 'output' state here
       await CourseService.saveCode(lessonId, blockIndex, code, output);
       toaster.create({ title: "Code & Output Saved!", type: "success" });
     } catch (error) {
@@ -60,7 +57,6 @@ export const CodeSandbox = ({
     }
   };
 
-  // ✅ NEW: Copy Handler
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
     setCopied(true);
@@ -69,41 +65,52 @@ export const CodeSandbox = ({
 
   return (
     <Box
+      // ✅ DARK LIQUID GLASS EDITOR
+      bg="rgba(10, 10, 10, 0.7)"
+      backdropFilter="blur(20px)"
       borderWidth="1px"
-      borderColor="gray.700"
-      borderRadius="xl"
+      borderColor="whiteAlpha.200"
+      borderRadius="2xl"
       overflow="hidden"
-      my={6}
-      bg="#1e1e1e"
-      shadow="lg"
+      my={8}
+      shadow="2xl"
+      position="relative"
+      _before={{
+        content: '""',
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        boxShadow: "inset 0 0 40px rgba(0, 0, 0, 0.5)",
+        borderRadius: "2xl",
+      }}
     >
       {/* Header */}
       <HStack
-        bg="#2d2d2d"
+        bg="whiteAlpha.50"
         p={2}
         px={4}
         justify="space-between"
         borderBottomWidth="1px"
-        borderColor="gray.700"
+        borderColor="whiteAlpha.100"
       >
         <HStack gap={3}>
           <Icon as={FaTerminal} color="green.400" />
           <Text
             fontSize="xs"
             fontWeight="bold"
-            color="gray.300"
+            color="whiteAlpha.700"
             textTransform="uppercase"
+            letterSpacing="wider"
           >
-            {language} Sandbox
+            {language} Playground
           </Text>
         </HStack>
 
-        {/* ✅ ACTION BUTTONS (Save & Copy) */}
         <HStack gap={1}>
           <Button
             size="xs"
             variant="ghost"
-            color="gray.400"
+            color="whiteAlpha.700"
             onClick={handleCopy}
             _hover={{ color: "white", bg: "whiteAlpha.200" }}
           >
@@ -116,7 +123,7 @@ export const CodeSandbox = ({
             color="blue.300"
             onClick={handleSave}
             loading={isSaving}
-            _hover={{ bg: "whiteAlpha.200" }}
+            _hover={{ bg: "blue.500/20", color: "blue.200" }}
           >
             <FaSave /> {isSaving ? "Saving..." : "Save"}
           </Button>
@@ -130,64 +137,78 @@ export const CodeSandbox = ({
             value={code}
             onChange={(e) => setCode(e.target.value)}
             bg="transparent"
-            color="gray.100"
+            color="gray.200"
             fontFamily="'Fira Code', monospace"
             fontSize="sm"
             border="none"
             _focus={{ ring: "none" }}
-            minH="150px"
-            p={4}
+            minH="200px"
+            p={6}
             resize="vertical"
             spellCheck={false}
+            lineHeight="1.6"
           />
           <Badge
             position="absolute"
-            bottom={2}
-            right={2}
+            bottom={4}
+            right={4}
             colorPalette="blue"
             size="sm"
-            opacity={0.7}
+            variant="solid"
+            opacity={0.3}
+            pointerEvents="none"
           >
-            Editable
+            EDITABLE
           </Badge>
         </Box>
 
         {/* Action Bar */}
         <HStack
-          bg="#252526"
-          p={2}
+          bg="whiteAlpha.50"
+          p={3}
           justify="flex-end"
           borderTopWidth="1px"
-          borderColor="gray.700"
+          borderColor="whiteAlpha.100"
         >
           <Button
             size="sm"
             colorPalette="green"
             onClick={handleRun}
             loading={isRunning}
+            px={6}
+            rounded="full"
+            shadow="md"
+            _hover={{ transform: "scale(1.05)" }}
           >
             <FaPlay /> Run Code
           </Button>
         </HStack>
 
-        {/* Output */}
+        {/* Output Console */}
         {(output || isRunning) && (
           <Box
             bg="black"
             color="green.300"
-            p={4}
+            p={5}
             fontFamily="monospace"
             fontSize="sm"
             borderTopWidth="1px"
-            borderColor="gray.700"
-            maxH="200px"
+            borderColor="whiteAlpha.200"
+            maxH="250px"
             overflowY="auto"
+            css={{ "&::-webkit-scrollbar": { display: "none" } }}
           >
-            <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs">
-              OUTPUT:
+            <Text
+              fontWeight="bold"
+              color="whiteAlpha.500"
+              mb={2}
+              fontSize="xs"
+              letterSpacing="wide"
+            >
+              TERMINAL OUTPUT:
             </Text>
-            <Text whiteSpace="pre-wrap">
-              {isRunning ? ">> Running..." : output}
+            <Text whiteSpace="pre-wrap" lineHeight="1.6">
+              {isRunning ? ">> Compiling and executing..." : output}
             </Text>
           </Box>
         )}

@@ -8,7 +8,7 @@ interface AppConfig {
     generateLesson: number;
     generateAudio: number;
     exportPdf: number;
-    regenerate: number;
+    createCoursePro: number;
   };
   pricing: {
     topUp: { price: number; credits: number; label: string };
@@ -30,7 +30,7 @@ const DEFAULTS = {
     generateLesson: 35,
     generateAudio: 15,
     exportPdf: 15,
-    regenerate: 15,
+    createCoursePro: 100,
   },
   pricing: {
     topUp: { price: 400, credits: 300, label: "Top Up" },

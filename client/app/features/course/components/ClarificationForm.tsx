@@ -33,12 +33,7 @@ export const ClarificationForm = ({
 }: ClarificationFormProps) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [textInput, setTextInput] = useState("");
-
-  // ✅ CRITICAL FIX: Use Ref for answers to prevent stale state in timeouts
-  // This solves the "Missing Answers" issue.
   const answersRef = useRef<Record<string, string>>({});
-
-  // ✅ CRITICAL FIX: Track submission state to prevent premature error
   const [hasSubmitted, setHasSubmitted] = useState(false);
 
   const [logs, setLogs] = useState<string[]>([
@@ -56,7 +51,6 @@ export const ClarificationForm = ({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs, currentStep]);
 
-  // ✅ ROBUST ERROR CHECK: Only show error if we ACTUALLY submitted
   useEffect(() => {
     if (isComplete && hasSubmitted && !isLoading) {
       setCurrentStep(questions.length - 1);
@@ -64,7 +58,7 @@ export const ClarificationForm = ({
         "❌ Error: Transmission failed or rejected. Please retry.",
         "info",
       );
-      setHasSubmitted(false); // Reset to allow retry
+      setHasSubmitted(false);
     }
   }, [isLoading, isComplete, hasSubmitted, questions.length]);
 
@@ -75,8 +69,6 @@ export const ClarificationForm = ({
 
   const handleAnswer = (questionId: string, value: string) => {
     addLog(`Selected: "${value}"`, "user");
-
-    // Update Ref IMMEDIATELY (Source of Truth)
     if (!value.includes("Decide for me")) {
       answersRef.current = { ...answersRef.current, [questionId]: value };
     } else {
@@ -98,10 +90,8 @@ export const ClarificationForm = ({
     addLog("RESUMING GENERATION SEQUENCE...", "info");
 
     setTimeout(() => {
-      // ✅ Send Ref.current (Contains ALL answers guaranteed)
-      console.log("🚀 Submitting Answers:", answersRef.current);
       onSubmit(answersRef.current);
-      setHasSubmitted(true); // Now we wait for loading to toggle
+      setHasSubmitted(true);
     }, 800);
   };
 
@@ -114,32 +104,50 @@ export const ClarificationForm = ({
 
   return (
     <Box
-      bg="gray.950"
+      // ✅ DARK LIQUID GLASS TERMINAL
+      bg="rgba(5, 5, 5, 0.85)"
+      backdropFilter="blur(24px) saturate(150%)"
       color="green.400"
       p={6}
-      borderRadius="xl"
+      borderRadius="2xl"
       fontFamily="mono"
-      boxShadow="2xl"
+      shadow="2xl"
       borderWidth="1px"
-      borderColor="gray.800"
+      borderColor="whiteAlpha.100"
       w="full"
       h="500px"
       display="flex"
       flexDirection="column"
+      position="relative"
+      _before={{
+        content: '""',
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        boxShadow: "inset 0 0 60px rgba(0, 255, 0, 0.05)", // Subtle internal glow
+        borderRadius: "2xl",
+      }}
     >
       {/* Header */}
       <HStack
         justify="space-between"
         mb={4}
         borderBottomWidth="1px"
-        borderColor="gray.800"
+        borderColor="whiteAlpha.100"
         pb={3}
       >
         <HStack>
           <Icon as={FaTerminal} />
           <Text fontWeight="bold">Clarification Terminal</Text>
         </HStack>
-        <Badge colorPalette="yellow" variant="solid">
+        <Badge
+          colorPalette="yellow"
+          variant="solid"
+          bg="yellow.500/20"
+          color="yellow.300"
+          borderWidth="1px"
+          borderColor="yellow.500/40"
+        >
           INTERACTIVE_MODE
         </Badge>
       </HStack>
@@ -163,7 +171,7 @@ export const ClarificationForm = ({
       </VStack>
 
       {/* Input Area */}
-      <Box borderTopWidth="1px" borderColor="gray.800" pt={4}>
+      <Box borderTopWidth="1px" borderColor="whiteAlpha.100" pt={4}>
         {!isComplete ? (
           <VStack align="stretch" gap={4}>
             <Text color="white" fontWeight="bold" fontSize="md">
@@ -185,9 +193,15 @@ export const ClarificationForm = ({
                     onClick={() => handleAnswer(currentQuestion.id, opt)}
                     h="auto"
                     py={2}
+                    rounded="lg"
                   >
                     <HStack width="full">
-                      <Badge variant="outline" colorPalette="gray" size="sm">
+                      <Badge
+                        variant="outline"
+                        colorPalette="gray"
+                        size="sm"
+                        borderColor="whiteAlpha.400"
+                      >
                         {idx + 1}
                       </Badge>
                       <Text>{opt}</Text>
@@ -202,7 +216,7 @@ export const ClarificationForm = ({
                   <Input
                     autoFocus
                     variant="flushed"
-                    borderColor="gray.700"
+                    borderColor="whiteAlpha.300"
                     color="white"
                     placeholder="Type answer..."
                     value={textInput}
@@ -214,6 +228,7 @@ export const ClarificationForm = ({
                     size="sm"
                     variant="ghost"
                     color="green.400"
+                    _hover={{ bg: "whiteAlpha.100" }}
                   >
                     ENTER
                   </Button>
@@ -225,8 +240,8 @@ export const ClarificationForm = ({
               <Button
                 size="xs"
                 variant="plain"
-                color="gray.500"
-                _hover={{ color: "gray.300" }}
+                color="whiteAlpha.500"
+                _hover={{ color: "whiteAlpha.800" }}
                 onClick={() =>
                   handleAnswer(currentQuestion.id, "Decide for me")
                 }

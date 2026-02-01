@@ -54,23 +54,18 @@ export const CreateCourseModal = ({
 
     setClarificationData(null);
 
-    mutate(topic, {
+    mutate({ topic }, {
       onSuccess: (data: any) => {
-        // 1. Check for Clarification (Moved from onError)
-        // Since we spoofed this as a success in api.ts, we catch it here.
         if (data?.code === "CLARIFICATION_NEEDED") {
           if (data.data) setClarificationData(data.data);
           return;
         }
-
-        // 2. Normal Success (Job Started)
         if (data.jobId) {
           setJobId(data.jobId);
           if (user) setUser({ ...user, credits: user.credits - CREATE_COST });
         }
       },
       onError: (error: any) => {
-        // Now this ONLY fires for real errors (500, Network, etc.)
         console.error("Generation failed", error);
         toaster.create({ title: "Generation Failed", type: "error" });
       },
@@ -101,15 +96,6 @@ export const CreateCourseModal = ({
     }
   };
 
-  const handleClose = () => {
-    if (jobId) return;
-    setTopic("");
-    setJobId(null);
-    setClarificationData(null);
-    onClose();
-  };
-
-  // --- RENDER HELPERS ---
   const renderContent = () => {
     if (jobId) {
       return (
@@ -131,28 +117,41 @@ export const CreateCourseModal = ({
     }
 
     return (
-      <VStack gap={4} align="stretch">
+      <VStack gap={6} align="stretch">
         <Text fontSize="sm" color="fg.muted">
           Enter a topic, and our AI will generate a complete syllabus for you.
         </Text>
 
         <Field.Root invalid={!canAfford}>
-          <Field.Label>Course Topic</Field.Label>
+          <Field.Label fontWeight="bold" color="fg.subtle">
+            Course Topic
+          </Field.Label>
           <Input
             placeholder="e.g. Python for Data Science, History of Rome..."
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             autoFocus
             onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+            size="lg"
+            rounded="xl"
+            bg="whiteAlpha.200"
+            _dark={{ bg: "blackAlpha.200" }}
+            borderWidth="1px"
+            borderColor="whiteAlpha.300"
+            _focus={{
+              borderColor: "blue.400",
+              boxShadow: "0 0 0 1px var(--chakra-colors-blue-400)",
+            }}
           />
         </Field.Root>
 
         <HStack
           justify="space-between"
-          bg={canAfford ? "blue.50" : "red.50"}
-          p={3}
-          rounded="md"
-          _dark={{ bg: canAfford ? "blue.900" : "red.900" }}
+          bg={canAfford ? "blue.500/10" : "red.500/10"}
+          p={4}
+          rounded="xl"
+          borderWidth="1px"
+          borderColor={canAfford ? "blue.500/20" : "red.500/20"}
         >
           <HStack gap={2}>
             <Icon color={canAfford ? "blue.500" : "red.500"}>
@@ -161,7 +160,8 @@ export const CreateCourseModal = ({
             <Text
               fontSize="sm"
               fontWeight="medium"
-              color={canAfford ? "blue.700" : "red.300"}
+              color={canAfford ? "blue.600" : "red.400"}
+              _dark={{ color: canAfford ? "blue.300" : "red.300" }}
             >
               {canAfford
                 ? `Balance: ${credits} Credits`
@@ -169,7 +169,12 @@ export const CreateCourseModal = ({
             </Text>
           </HStack>
 
-          <Badge colorPalette="gray" variant="surface">
+          <Badge
+            variant="surface"
+            colorPalette="gray"
+            bg="whiteAlpha.400"
+            _dark={{ bg: "whiteAlpha.100" }}
+          >
             Cost: {CREATE_COST}
           </Badge>
         </HStack>
@@ -186,11 +191,25 @@ export const CreateCourseModal = ({
       closeOnInteractOutside={!jobId && !isPending && !isResuming}
     >
       <Portal>
-        <Dialog.Backdrop />
+        <Dialog.Backdrop
+          bg="blackAlpha.600"
+          backdropFilter="blur(10px)"
+          animationDuration="0.3s"
+        />
         <Dialog.Positioner>
-          <Dialog.Content>
+          <Dialog.Content
+            // ✅ LIQUID GLASS MODAL
+            bg="rgba(255, 255, 255, 0.8)"
+            _dark={{ bg: "rgba(20, 20, 20, 0.85)", borderColor: "whiteAlpha.100" }}
+            backdropFilter="blur(24px) saturate(180%)"
+            boxShadow="2xl"
+            borderRadius="3xl"
+            borderWidth="1px"
+            borderColor="whiteAlpha.400"
+            p={2}
+          >
             <Dialog.Header>
-              <Dialog.Title>
+              <Dialog.Title fontSize="xl" fontWeight="bold">
                 {jobId
                   ? "Building Course..."
                   : clarificationData
@@ -199,12 +218,12 @@ export const CreateCourseModal = ({
               </Dialog.Title>
             </Dialog.Header>
 
-            <Dialog.Body>{renderContent()}</Dialog.Body>
+            <Dialog.Body pb={6}>{renderContent()}</Dialog.Body>
 
             {!jobId && !clarificationData && (
               <Dialog.Footer>
                 <Dialog.CloseTrigger asChild>
-                  <Button variant="outline" disabled={isPending}>
+                  <Button variant="ghost" disabled={isPending} rounded="lg">
                     Cancel
                   </Button>
                 </Dialog.CloseTrigger>
@@ -215,9 +234,13 @@ export const CreateCourseModal = ({
                   loading={isPending}
                   loadingText="Queueing..."
                   disabled={!canAfford || !topic.trim()}
+                  rounded="lg"
+                  size="md"
+                  px={6}
+                  shadow="md"
                 >
-                  {!isPending && <FaMagic />}
-                  {isPending ? "Queueing..." : `Generate (-${CREATE_COST})`}
+                  {!isPending && <FaMagic style={{ marginRight: "8px" }} />}
+                  {isPending ? "Queueing..." : `Generate`}
                 </Button>
               </Dialog.Footer>
             )}

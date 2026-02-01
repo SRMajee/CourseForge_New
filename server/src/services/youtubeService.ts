@@ -1,14 +1,14 @@
-import { google } from 'googleapis';
-import { env } from '../config/env';
-import logger from '../utils/logger';
+import { google } from "googleapis";
+import { env } from "../config/env";
+import logger from "../utils/logger";
 
 export class YouTubeService {
   private youtube;
 
   constructor() {
     this.youtube = google.youtube({
-      version: 'v3',
-      auth: env.YOUTUBE_API_KEY // Ensure this is set in your .env
+      version: "v3",
+      auth: env.YOUTUBE_API_KEY, // Ensure this is set in your .env
     });
   }
 
@@ -19,16 +19,16 @@ export class YouTubeService {
     try {
       if (!query) return null;
 
-      logger.info(`Searching YouTube for: ${query}`);
+      // logger.info(`Searching YouTube for: ${query}`);
 
       const response = await this.youtube.search.list({
-        part: ['snippet'],
+        part: ["snippet"],
         q: query,
-        maxResults: 2,      // We only need the top result
-        type: ['video'],
-        videoEmbeddable: 'true', // Critical: Filters out non-embeddable videos
-        relevanceLanguage: 'en',
-        safeSearch: 'moderate'
+        maxResults: 2, // We only need the top result
+        type: ["video"],
+        videoEmbeddable: "true", // Critical: Filters out non-embeddable videos
+        relevanceLanguage: "en",
+        safeSearch: "moderate",
       });
 
       const item = response.data.items?.[0];
@@ -41,12 +41,18 @@ export class YouTubeService {
         videoId: item.id.videoId,
         title: item.snippet?.title,
         thumbnail: item.snippet?.thumbnails?.high?.url,
-        channel: item.snippet?.channelTitle
+        channel: item.snippet?.channelTitle,
       };
-
-    } catch (error) {
-      logger.error("YouTube API Error:", error);
-      // Return null so the frontend can render a fallback or hide the video block
+    } catch (error: any) {
+      // ✅ FIX: Gracefully handle Quota Limits
+      if (error.message?.includes("quota") || error.code === 403) {
+        logger.warn(
+          `⚠️ YouTube API Quota Exceeded. Bypassing video search for: "${query}"`,
+        );
+      } else {
+        logger.error("YouTube API Error:", error.message);
+      }
+      // Return null so the frontend/service can render a fallback or hide the video block
       return null;
     }
   }

@@ -6,62 +6,112 @@ import {
   useBreakpointValue,
 } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
-import { Outlet, useNavigate } from "react-router"; // or 'react-router-dom'
-import { useAuth0 } from "@auth0/auth0-react"; // 👈 Added
+import { Outlet } from "react-router";
+import { useAuth0 } from "@auth0/auth0-react";
 import { Navbar } from "~/components/layout/Navbar";
 import { Sidebar } from "~/components/layout/Sidebar";
 
 export default function AppLayout() {
-  // 1. Use Auth0 Hook for auth state
   const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
-  const navigate = useNavigate();
-
-  // State
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isCollapsed, setCollapsed] = useState(false);
-
   const isMobile = useBreakpointValue({ base: true, md: false });
 
-  const handleToggleSidebar = () => {
-    if (isMobile) {
-      setSidebarOpen(true);
-    } else {
-      setCollapsed(!isCollapsed);
-    }
-  };
-
-  // 2. Protect the Route
   useEffect(() => {
-    // If Auth0 is done loading and user is NOT authenticated, redirect
-    if (!isLoading && !isAuthenticated) {
-      loginWithRedirect(); // Or navigate("/login")
-    }
+    if (!isLoading && !isAuthenticated) loginWithRedirect();
   }, [isLoading, isAuthenticated, loginWithRedirect]);
 
-  // 3. Show Spinner while Auth0 initializes
-  if (isLoading) {
+  if (isLoading)
     return (
-      <Center h="100vh">
+      <Center h="100vh" bg="bg.canvas">
         <Spinner size="xl" color="blue.500" />
       </Center>
     );
-  }
-
-  // 4. If not authenticated (and not loading), render null (useEffect handles redirect)
   if (!isAuthenticated) return null;
 
   return (
-    <Flex direction="column" minH="100vh">
-      <Navbar onToggleSidebar={handleToggleSidebar} />
+    <Flex
+      direction="column"
+      h="100vh"
+      overflow="hidden"
+      // ✅ 1. Deep, Rich Background Base
+      bgGradient="to-br"
+      gradientFrom="gray.50"
+      gradientTo="gray.100"
+      _dark={{
+        gradientFrom: "#050505",
+        gradientTo: "#0a0a0a",
+      }}
+      position="relative"
+    >
+      {/* ✅ 2. Ambient Light Blobs (The "Liquid" Source) */}
+      <Box
+        position="fixed"
+        top="-30%"
+        left="-10%"
+        w="70vw"
+        h="70vw"
+        bg="blue.500"
+        opacity={0.06}
+        filter="blur(120px)"
+        zIndex={0}
+        pointerEvents="none"
+        rounded="full"
+        mixBlendMode="screen"
+      />
+      <Box
+        position="fixed"
+        bottom="-30%"
+        right="-10%"
+        w="60vw"
+        h="60vw"
+        bg="purple.500"
+        opacity={0.06}
+        filter="blur(140px)"
+        zIndex={0}
+        pointerEvents="none"
+        rounded="full"
+        mixBlendMode="screen"
+      />
 
-      <Flex flex="1">
+      {/* 3. Navbar (Floating Glass) */}
+      <Box zIndex={100} position="relative" w="full">
+        <Navbar
+          onToggleSidebar={() =>
+            isMobile ? setSidebarOpen(true) : setCollapsed(!isCollapsed)
+          }
+        />
+      </Box>
+
+      <Flex flex="1" overflow="hidden" position="relative" zIndex={1}>
+        {/* 4. Sidebar (Floating Glass) */}
         <Sidebar
           isOpen={isSidebarOpen}
           onClose={() => setSidebarOpen(false)}
           isCollapsed={isCollapsed}
         />
 
-        <Box flex="1" p={6} bg="bg.muted" overflowY="auto">
+        {/* 5. Main Stage (Transparent to show bg) */}
+        <Box
+          flex="1"
+          position="relative"
+          overflowY="auto"
+          overflowX="hidden"
+          p={0}
+          // Custom Scrollbar for "Premium" feel
+          css={{
+            "&::-webkit-scrollbar": { width: "6px" },
+            "&::-webkit-scrollbar-thumb": {
+              backgroundColor: "rgba(0,0,0,0.1)",
+              borderRadius: "10px",
+            },
+            _dark: {
+              "&::-webkit-scrollbar-thumb": {
+                backgroundColor: "rgba(255,255,255,0.1)",
+              },
+            },
+          }}
+        >
           <Outlet />
         </Box>
       </Flex>

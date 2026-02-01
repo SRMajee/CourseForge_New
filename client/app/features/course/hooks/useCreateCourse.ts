@@ -4,13 +4,13 @@ import { toaster } from "~/components/ui/toaster";
 
 export const useCreateCourse = () => {
   // ❌ REMOVED: const navigate = useNavigate();
-  // The Modal handles navigation now via the Terminal.
 
   return useMutation({
-    mutationFn: (topic: string) => generateCourse(topic),
+    // ✅ UPDATE: Accept object payload matching the service
+    mutationFn: (payload: { topic: string; mode?: "standard" | "pro" }) =>
+      generateCourse(payload),
 
     // ❌ REMOVED: onSuccess with navigate()
-    // We let the component handle the 'jobId' response.
 
     onError: (error: any) => {
       console.error(error);

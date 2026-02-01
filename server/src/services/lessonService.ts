@@ -146,15 +146,20 @@ export class LessonService {
           structuredLesson.content.map(async (block: any) => {
             // ✅ FIX 1: Process ALL video blocks (even if query is missing)
             if (block.type === "video") {
-              // Fallback: Use lesson title if query is missing/empty
-              // This prevents "undefined" from ever reaching the URL
               const query = block.query || lesson.title;
               let videoData = null;
 
               if (query) {
-                videoData = await youtubeService.searchVideo(query);
+                // ✅ SAFETY: Wrap in try/catch to ensure Quota errors don't crash generation
+                try {
+                  videoData = await youtubeService.searchVideo(query);
+                } catch (e) {
+                  logger.warn(
+                    `Bypassed YouTube search for "${query}" due to error.`,
+                  );
+                  videoData = null;
+                }
               }
-              // console.log("YouTube Search Data:", videoData);
 
               if (videoData) {
                 return {
@@ -166,16 +171,15 @@ export class LessonService {
               } else {
                 // ✅ FIX 2: Safe Fallback Link
                 const safeQuery = query || "Educational Video";
-
                 logger.warn(
-                  `⚠️ YouTube search failed for: "${safeQuery}". Falling back to Link.`,
+                  `⚠️ YouTube fallback active for: "${safeQuery}". Generating Link block.`,
                 );
 
                 return {
                   type: "link",
-                  title: `Watch Related Video`,
+                  title: `Watch Related Video: ${safeQuery}`,
                   url: `https://www.youtube.com/results?search_query=${encodeURIComponent(safeQuery)}`,
-                  description: `Search results for ${safeQuery}`,
+                  description: `Click here to search for videos about ${safeQuery}`,
                 };
               }
             }
@@ -184,7 +188,6 @@ export class LessonService {
               return await codeExecutionService.verifyCodeBlock(block);
             }
             // ✅ FIX 3: Sanitize AI-Hallucinated Broken Links
-            // If the AI generated a link with "undefined" in the URL, fix it.
             if (block.type === "link") {
               if (!block.url || block.url.includes("undefined")) {
                 const cleanQuery = block.title || lesson.title;

@@ -18,7 +18,8 @@ export class ImageService {
    * Returns a fallback image if the API call fails or hits rate limits.
    */
   async getCourseThumbnail(query: string): Promise<string> {
-    if (!UNSPLASH_ACCESS_KEY) {
+    // 1. Safety Check: If no key is configured, fail fast to fallback
+    if (!process.env.UNSPLASH_ACCESS_KEY) {
       logger.warn("⚠️ No Unsplash Key found. Using fallback image.");
       return this.getRandomFallback();
     }
@@ -29,11 +30,12 @@ export class ImageService {
           query,
           per_page: 1,
           orientation: "landscape",
+          content_filter: "high", // Filter NSFW results
         },
         headers: {
-          Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}`,
+          Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`,
         },
-        timeout: 3000, // 3s Timeout to prevent hanging generation
+        timeout: 4000, // 4s Timeout to prevent hanging generation
       });
 
       if (response.data.results && response.data.results.length > 0) {
@@ -43,12 +45,17 @@ export class ImageService {
       logger.info(`🖼️ No Unsplash results for "${query}". Using fallback.`);
       return this.getRandomFallback();
     } catch (error: any) {
+      // 2. Error Handling: Log it but DO NOT CRASH. Return fallback.
       logger.error(`❌ Unsplash API Error: ${error.message}`);
       return this.getRandomFallback();
     }
   }
 
   private getRandomFallback(): string {
+    // 3. Robust Fallback: Ensure we always have an array
+    if (!FALLBACK_IMAGES || FALLBACK_IMAGES.length === 0) {
+      return "https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=800&q=80";
+    }
     return FALLBACK_IMAGES[Math.floor(Math.random() * FALLBACK_IMAGES.length)];
   }
 }

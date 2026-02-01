@@ -1,4 +1,4 @@
-export const PLAN_TYPES = ["FREE", "PRO"] as const;
+export const PLAN_TYPES = ["FREE", "PRO", "free", "pro"] as const;
 export type PlanType = (typeof PLAN_TYPES)[number];
 
 export type SubscriptionStatus =
@@ -26,6 +26,12 @@ export interface User {
   subscriptionStatus: SubscriptionStatus;
   stripeCustomerId?: string;
   currentPeriodEnd?: string; // Dates over JSON are strings
+
+  // ✅ Phase 1: Pro Mode Logic
+  hasUsedProTrial: boolean;
+  preferences?: {
+    defaultProMode: boolean;
+  };
 
   createdAt: string;
   updatedAt: string;

@@ -9,65 +9,99 @@ import {
   HStack,
   Icon,
   Button,
-  IconButton,
+  Container,
 } from "@chakra-ui/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useInView } from "react-intersection-observer";
 import { useCourses } from "~/features/course/hooks/useCourses";
 import { CourseCard } from "~/features/course/components/CourseCard";
-import { FaSearch, FaChevronLeft, FaChevronRight } from "react-icons/fa";
+import { FaSearch } from "react-icons/fa";
 import { CreateCourseModal } from "~/features/course/components/CreateCourseModal";
 
 export default function MyCourses() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [allCourses, setAllCourses] = useState<any[]>([]);
   const [isModalOpen, setModalOpen] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
-  // ✅ Pass page & limit to hook
-  // Ensure your useCourses hook is updated to accept these args!
-  const { data: response, isLoading } = useCourses(page, 9);
+  // Infinite Scroll Hook
+  const { ref, inView } = useInView();
 
-  // ✅ Handle new response structure { data: [], meta: {} }
-  const courses = response?.data || [];
-  const meta = response?.meta || {
-    totalPages: 1,
-    hasNextPage: false,
-    hasPrevPage: false,
-  };
+  // Fetch Logic
+  const { data: response, isLoading, isFetching } = useCourses(page, 9);
 
-  // Filter logic (Client-side for now)
-  const filteredCourses = courses?.filter(
-    (c: { title: string; tags: any[] }) =>
+  // 1. Reset list on search change
+  useEffect(() => {
+    setAllCourses([]);
+    setPage(1);
+    setHasMore(true);
+  }, [search]);
+
+  // 2. Accumulate Data
+  useEffect(() => {
+    if (response?.data) {
+      const newCourses = response.data;
+
+      setAllCourses((prev) => {
+        // Dedup logic based on _id
+        const existingIds = new Set(prev.map((c) => c._id));
+        const uniqueNew = newCourses.filter(
+          (c: any) => !existingIds.has(c._id),
+        );
+        return [...prev, ...uniqueNew];
+      });
+
+      // Stop if reached end
+      if (response.meta && page >= response.meta.totalPages) {
+        setHasMore(false);
+      }
+    }
+  }, [response, page]);
+
+  // 3. Load More Trigger
+  useEffect(() => {
+    if (inView && hasMore && !isFetching) {
+      setPage((prev) => prev + 1);
+    }
+  }, [inView, hasMore, isFetching]);
+
+  // Client-side filtering for active search
+  const displayCourses = allCourses.filter(
+    (c) =>
       c.title.toLowerCase().includes(search.toLowerCase()) ||
       c.tags.some((t: string) =>
         t.toLowerCase().includes(search.toLowerCase()),
       ),
   );
 
-  if (isLoading) {
-    return (
-      <Center h="50vh">
-        <Spinner size="xl" color="brand.500" />
-      </Center>
-    );
-  }
-
   return (
-    <Box>
+    <Container maxW="container.xl" py={8}>
       <HStack justify="space-between" mb={8} wrap="wrap" gap={4}>
-        <Heading size="2xl">My Library</Heading>
+        <Heading size="3xl" fontWeight="black" letterSpacing="tight">
+          My Library
+        </Heading>
 
-        {/* Search Bar */}
+        {/* Glass Search Bar */}
         <Box w={{ base: "full", md: "320px" }} position="relative">
           <Input
-            placeholder="Search visible courses..."
+            placeholder="Search your library..."
             pl={10}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            bg="bg.panel"
+            // Liquid Glass Style
+            bg="whiteAlpha.200"
+            _dark={{ bg: "whiteAlpha.100" }}
+            backdropFilter="blur(10px)"
+            border="none"
+            ring="1px"
+            ringColor="whiteAlpha.300"
+            rounded="full"
+            _focus={{ ringColor: "blue.400", bg: "whiteAlpha.300" }}
           />
           <Icon
             position="absolute"
-            left={3}
+            left={4}
             top="50%"
             transform="translateY(-50%)"
             color="fg.muted"
@@ -77,69 +111,53 @@ export default function MyCourses() {
         </Box>
       </HStack>
 
-      {!filteredCourses?.length ? (
-        <Center
-          h="40vh"
-          flexDirection="column"
-          gap={4}
-          borderWidth="1px"
-          borderStyle="dashed"
-          borderRadius="lg"
-        >
-          <Text color="fg.muted" fontSize="lg">
-            No courses found on this page.
-          </Text>
-          <Text fontSize="sm" color="fg.muted">
-            Try adjusting your search or generate a new course.
-          </Text>
-
-          {/* Empty State Trigger */}
-          <Button variant="outline" mt={2} onClick={() => setModalOpen(true)}>
-            Create your first course
-          </Button>
-        </Center>
-      ) : (
-        <Box>
-          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={6}>
-            {filteredCourses.map((course: any) => (
+      {/* Course Grid */}
+      <Box minH="50vh">
+        {displayCourses.length === 0 && !isLoading ? (
+          <Center
+            h="40vh"
+            flexDirection="column"
+            gap={4}
+            rounded="3xl"
+            bg="whiteAlpha.100"
+            borderWidth="1px"
+            borderColor="whiteAlpha.200"
+            borderStyle="dashed"
+          >
+            <Text color="fg.muted" fontSize="lg">
+              {search ? "No matches found." : "Your library is empty."}
+            </Text>
+            {!search && (
+              <Button
+                variant="surface"
+                colorPalette="blue"
+                onClick={() => setModalOpen(true)}
+                rounded="full"
+              >
+                Create New Course
+              </Button>
+            )}
+          </Center>
+        ) : (
+          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={8}>
+            {displayCourses.map((course) => (
               <CourseCard key={course._id} course={course} />
             ))}
           </SimpleGrid>
+        )}
 
-          {/* ✅ Pagination Controls */}
-          {meta.totalPages > 1 && (
-            <HStack justify="center" gap={4} py={8}>
-              <IconButton
-                aria-label="Previous Page"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={!meta.hasPrevPage}
-                variant="outline"
-              >
-                <FaChevronLeft />
-              </IconButton>
+        {/* Infinite Scroll Loader */}
+        {hasMore && (
+          <Center py={10} ref={ref}>
+            {isFetching && <Spinner size="lg" color="blue.500" />}
+          </Center>
+        )}
+      </Box>
 
-              <Text fontWeight="bold" color="fg.muted">
-                Page {meta.page} of {meta.totalPages}
-              </Text>
-
-              <IconButton
-                aria-label="Next Page"
-                onClick={() => setPage((p) => p + 1)}
-                disabled={!meta.hasNextPage}
-                variant="outline"
-              >
-                <FaChevronRight />
-              </IconButton>
-            </HStack>
-          )}
-        </Box>
-      )}
-
-      {/* The Modal Component */}
       <CreateCourseModal
         isOpen={isModalOpen}
         onClose={() => setModalOpen(false)}
       />
-    </Box>
+    </Container>
   );
 }
