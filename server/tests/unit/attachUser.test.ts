@@ -26,6 +26,10 @@ describe("Middleware: attachUser", () => {
     next = jest.fn();
   });
 
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
   it("should attach user to req.user if found in DB", async () => {
     // Setup Mock: Database returns a user
     const mockDbUser = { _id: "db_id_123", email: "test@test.com" };
@@ -39,6 +43,11 @@ describe("Middleware: attachUser", () => {
   });
 
   it("should return 401 if user is not found in DB", async () => {
+    // 1. SILENCE THE LOG: Spy on console.error and make it do nothing
+    const consoleSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
     // Setup Mock: Database returns null
     (User.findOne as jest.Mock).mockResolvedValue(null);
 
@@ -47,10 +56,14 @@ describe("Middleware: attachUser", () => {
     expect(User.findOne).toHaveBeenCalled();
     expect(req.user).toBeUndefined();
     expect(res.status).toHaveBeenCalledWith(401);
-    // ✅ FIX: Match the actual error message from your middleware
+
+    // Check for the response message
     expect(res.json).toHaveBeenCalledWith({
       message: "User not synced",
     });
     expect(next).not.toHaveBeenCalled();
+
+    // 2. CLEAN UP: Restore console.error so other tests can log errors if needed
+    consoleSpy.mockRestore();
   });
 });

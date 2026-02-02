@@ -13,7 +13,7 @@ export const attachUser = async (
   next: NextFunction,
 ) => {
   try {
-    console.log("🔍 AttachUser: Middleware Started");
+    // console.log("🔍 AttachUser: Middleware Started");
 
     // 1. Check if Auth0 Token exists
     if (!req.auth || !req.auth.payload) {
@@ -24,7 +24,7 @@ export const attachUser = async (
     }
 
     const auth0Id = req.auth.payload.sub;
-    console.log("🔍 AttachUser: Auth0 ID found:", auth0Id);
+    // console.log("🔍 AttachUser: Auth0 ID found:", auth0Id);
 
     // 2. Find User in DB
     const user = await User.findOne({ auth0Id });
@@ -37,7 +37,7 @@ export const attachUser = async (
     }
 
     // 3. Success
-    console.log("✅ AttachUser: User found:", user.email);
+    // console.log("✅ AttachUser: User found:", user.email);
     req.user = user;
     next();
   } catch (error) {

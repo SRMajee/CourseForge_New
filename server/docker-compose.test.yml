@@ -15,7 +15,7 @@ services:
       - GROQ_API_KEY=mock_groq
       - GEMINI_API_KEY=mock_gemini
       - MONGO_URI=mongodb://mongo:27017/courseforge_test
-    command: pnpm exec jest --runInBand --logHeapUsage --detectOpenHandles
+    command: pnpm exec jest --runInBand --logHeapUsage --detectOpenHandles --forceExit
     volumes:
       - ./src:/app/src
       - ./tests:/app/tests

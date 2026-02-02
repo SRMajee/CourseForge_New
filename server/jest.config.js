@@ -6,8 +6,9 @@ module.exports = {
     "^.+\\.tsx?$": [
       "ts-jest",
       {
-        isolatedModules: true,
+        // ✅ FIX: Move 'isolatedModules' inside 'tsconfig'
         tsconfig: {
+          isolatedModules: true, 
           esModuleInterop: true,
         },
       },
