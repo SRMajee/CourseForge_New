@@ -13,7 +13,6 @@ export const searchVideo = async (req: Request, res: Response) => {
 
     const videoData = await youtubeService.searchVideo(query);
 
-    // ✅ FIX: Do NOT return 404 if quota is exceeded or video not found.
     // Return null with 200 OK so the frontend handles it gracefully (e.g. hides the video block).
     if (!videoData) {
       return res.json(null);
@@ -54,6 +53,9 @@ export const generateLessonAudio = async (req: Request, res: Response) => {
     // Handle specific "Insufficient credits" message cleaner
     if (error.message.includes("Insufficient credits")) {
       return res.status(402).json({ message: error.message });
+    }
+    if (error.message === "Lesson not found") {
+      return res.status(404).json({ message: error.message });
     }
     res.status(500).json({ message: error.message });
   }
