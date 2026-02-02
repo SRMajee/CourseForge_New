@@ -39,3 +39,10 @@ export const generateLessonAudio = async (
   );
   return data;
 };
+
+export const LessonService = {
+  getLessonById,
+  generateLessonContent,
+  searchYouTubeVideo,
+  generateLessonAudio,
+};

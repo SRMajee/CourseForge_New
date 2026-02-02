@@ -58,12 +58,12 @@ export const CreateCourseModal = ({
 
   const isPro =
     user?.planType === "PRO" || user?.subscriptionStatus === "active";
-  console.log("Is Pro User:", isPro);
+  // console.log("Is Pro User:", isPro);
   const currentCost =
     mode === "pro"
       ? getCost("createCoursePro") || 100
       : getCost("createCourse") || 50;
-  console.log("Current Cost:", currentCost);
+  // console.log("Current Cost:", currentCost);
 
   const credits = user?.credits || 0;
   const canAfford =

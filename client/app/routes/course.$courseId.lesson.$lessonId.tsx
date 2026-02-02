@@ -49,7 +49,6 @@ import {
   FaSearch,
 } from "react-icons/fa";
 import { LessonContentRenderer } from "~/features/lesson/components/LessonContentRenderer";
-import { LessonPDFExporter } from "~/features/lesson/components/LessonPDFExporter";
 import { useAuthStore } from "~/store/authStore";
 import { toaster } from "~/components/ui/toaster";
 import { useConfigStore } from "~/store/configStore";
@@ -59,6 +58,8 @@ import { Radio } from "~/components/ui/radio";
 import { useDeleteLesson } from "~/features/course/hooks/useCourseMutations";
 import type { Route } from "./+types/dashboard";
 import { getLessonById } from "~/services/lessonService";
+// import { Lesson } from "../types/lesson";
+import { LessonPDFButton } from "~/features/pdf/components/LessonPDFButton";
 
 const LANGUAGES = [
   { value: "hinglish", label: "Hinglish (Mix)", locked: false },
@@ -472,17 +473,18 @@ export default function LessonPage() {
             )}
 
             {hasContent && (
-              <LessonPDFExporter
-                lesson={lesson}
-                lessonTitle={courseId}
-                videoThumbnail={videoData?.thumbnail}
-                videoTitle={videoData?.title}
-                videoUrl={
-                  videoData?.videoId
-                    ? `https://www.youtube.com/watch?v=${videoData.videoId}`
-                    : undefined
-                }
-              />
+              // <LessonPDFExporter
+              //   lesson={lesson}
+              //   lessonTitle={courseId}
+              //   videoThumbnail={videoData?.thumbnail}
+              //   videoTitle={videoData?.title}
+              //   videoUrl={
+              //     videoData?.videoId
+              //       ? `https://www.youtube.com/watch?v=${videoData.videoId}`
+              //       : undefined
+              //   }
+              <LessonPDFButton lesson={lesson} />
+              // />
             )}
             {/* ✅ SPACER PUSHES DELETE BUTTON TO RIGHT END */}
             <Spacer />

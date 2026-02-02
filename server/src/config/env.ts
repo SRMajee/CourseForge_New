@@ -49,7 +49,8 @@ const envSchema = z.object({
   COST_REGENERATE_COURSE_PRO: z.string().transform(Number).default("75"),
   COST_REGENERATE_LESSON: z.string().transform(Number).default("15"),
   COST_REGENERATE_LESSON_PRO: z.string().transform(Number).default("25"),
-
+  COST_EXPORT_MODULE_PDF: z.string().transform(Number).default("20"),
+  COST_EXPORT_COURSE_PDF: z.string().transform(Number).default("50"),
   // 👇 STRIPE PRODUCT CONFIG
   STRIPE_PRICE_ID_TOPUP: z.string().min(1, "Topup Price ID missing"),
   STRIPE_PRICE_ID_PRO: z.string().min(1, "Pro Price ID missing"),

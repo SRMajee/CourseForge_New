@@ -15,7 +15,7 @@ export const useSocketCredits = () => {
       credits: number;
       deducted?: number;
     }) => {
-      console.log("💰 [Socket] Credit Update Payload:", data);
+      // console.log("💰 [Socket] Credit Update Payload:", data);
 
       // ✅ FIX: Force direct replacement of the credit value.
       // Do not use `state.user.credits + ...` logic.

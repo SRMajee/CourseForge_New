@@ -26,12 +26,12 @@ export const AuthSync = () => {
           picture: user.picture,
         };
 
-        console.log("📤 Syncing User:", payload); // Debug log
+        // console.log("📤 Syncing User:", payload); // Debug log
 
         const { data } = await api.post("/auth/sync", payload);
 
         setUser(data);
-        console.log("✅ User Synced:", data.email);
+        // console.log("✅ User Synced:", data.email);
       } catch (error) {
         console.error("❌ Sync Failed:", error);
         isSyncing.current = false; // Allow retry on failure

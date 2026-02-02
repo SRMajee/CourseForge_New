@@ -10,6 +10,8 @@ import { socketService } from "../services/socketService";
 import { User } from "../models/User";
 import { codeExecutionService } from "../services/CodeExecutionService";
 import { CREDIT_COSTS } from "../config/credits"; // 👈 Add this
+import { Course } from "../models/Course";
+import { Module } from "../models/Module";
 /**
  * POST /api/v1/courses/outline
  * NOW ASYNCHRONOUS via Redis
@@ -293,7 +295,65 @@ export const resumeCourse = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Failed to resume course" });
   }
 };
+// ✅ 1. Module PDF Deduction
+export const downloadModulePDF = async (req: Request, res: Response) => {
+  try {
+    const { lessonId } = req.params;
+    // @ts-ignore
+    const userId = req.user?._id;
 
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // Deduct Credits via Service
+    const result = await lessonService.deductModulePDFCredits(userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Credits deducted",
+      remainingCredits: result.remainingCredits,
+    });
+  } catch (error: any) {
+    logger.error("Controller Error - PDF Deduct:", error);
+
+    if (error.message.includes("Insufficient credits")) {
+      return res
+        .status(402)
+        .json({ message: "Insufficient credits to download PDF." });
+    }
+
+    return res.status(500).json({ message: "Failed to process download." });
+  }
+};
+
+// ✅ 2. Full Course PDF Deduction
+export const downloadCoursePDF = async (req: Request, res: Response) => {
+  try {
+    const { lessonId } = req.params;
+    // @ts-ignore
+    const userId = req.user?._id;
+
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // Deduct Credits via Service
+    const result = await lessonService.deductCoursePDFCredits(userId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Credits deducted",
+      remainingCredits: result.remainingCredits,
+    });
+  } catch (error: any) {
+    logger.error("Controller Error - PDF Deduct:", error);
+
+    if (error.message.includes("Insufficient credits")) {
+      return res
+        .status(402)
+        .json({ message: "Insufficient credits to download PDF." });
+    }
+
+    return res.status(500).json({ message: "Failed to process download." });
+  }
+};
 /**
  * POST /api/v1/courses/lessons/:lessonId/pdf
  * Handles credit deduction for PDF download

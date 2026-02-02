@@ -30,7 +30,7 @@ export default function Settings() {
   const { user: auth0User, isLoading: isAuthLoading } = useAuth0();
   const { user: dbUser, setUser } = useAuthStore();
   const { config, isLoading: isConfigLoading } = useConfigStore();
-  console.log("Config in Settings:", config);
+  // console.log("Config in Settings:", config);
   const [name, setName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isTopUpOpen, setTopUpOpen] = useState(false);

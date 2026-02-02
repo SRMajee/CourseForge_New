@@ -45,6 +45,38 @@ export class LessonService {
     const remainingCredits = await creditService.getBalance(userId);
     return { success: true, remainingCredits };
   }
+  async deductModulePDFCredits(userId: string) {
+    const COST = CREDIT_COSTS.EXPORT_MODULE_PDF; // Cost for PDF Download
+
+    // 1. Check & Deduct Atomically
+    const success = await creditService.deductCredits(userId, COST);
+
+    if (!success) {
+      throw new Error(`Insufficient credits. Required: ${COST}`);
+    }
+
+    logger.info(
+      `💰 Deducted ${COST} credits for PDF Download (User: ${userId})`,
+    );
+    const remainingCredits = await creditService.getBalance(userId);
+    return { success: true, remainingCredits };
+  }
+  async deductCoursePDFCredits(userId: string) {
+    const COST = CREDIT_COSTS.EXPORT_COURSE_PDF; // Cost for PDF Download
+
+    // 1. Check & Deduct Atomically
+    const success = await creditService.deductCredits(userId, COST);
+
+    if (!success) {
+      throw new Error(`Insufficient credits. Required: ${COST}`);
+    }
+
+    logger.info(
+      `💰 Deducted ${COST} credits for PDF Download (User: ${userId})`,
+    );
+    const remainingCredits = await creditService.getBalance(userId);
+    return { success: true, remainingCredits };
+  }
   /**
    * ✅ GENERATION LOGIC (Prompt + AI + DB + Credits)
    * Moved the "Smart Prompt" inside here to keep Controller clean.

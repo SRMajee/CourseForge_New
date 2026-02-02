@@ -8,6 +8,8 @@ export interface AppConfig {
     generateLesson: number;
     generateAudio: number;
     exportPdf: number;
+    exportModulePdf: number;
+    exportCoursePdf: number;
     createCoursePro: number;
     regenerateCourse: number;
     regenerateCoursePro: number;
@@ -39,12 +41,14 @@ const DEFAULTS: AppConfig = {
     createCourse: 50,
     generateLesson: 35,
     generateAudio: 15,
-    exportPdf: 15,
+    exportPdf: 5,
     createCoursePro: 100,
     regenerateCourse: 25,
     regenerateCoursePro: 75,
     regenerateLessonPro: 25,
     regenerateLesson: 15,
+    exportModulePdf: 10,
+    exportCoursePdf: 20,
   },
   // ✅ FIX: Added default to satisfy AppConfig interface
   costMenu: [],

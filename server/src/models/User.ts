@@ -45,7 +45,7 @@ const userSchema = new Schema<IUser>(
     name: { type: String },
     picture: { type: String },
 
-    credits: { type: Number, default: 50 },
+    credits: { type: Number, default: 200 },
 
     // ✅ FIX 2: Remove 'unique' from sparse fields to avoid null collision errors
     stripeCustomerId: { type: String, sparse: true },

@@ -23,7 +23,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     // This prevents creating a second socket while the first is still shaking hands.
     if (socket) return;
 
-    console.log("🔌 Initializing Socket Connection to:", SOCKET_URL);
+    // console.log("🔌 Initializing Socket Connection to:", SOCKET_URL);
 
     const newSocket = io(SOCKET_URL, {
       transports: ["websocket"],
@@ -31,13 +31,13 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     });
 
     newSocket.on("connect", () => {
-      console.log("✅ Socket Connected:", newSocket.id);
+      // console.log("✅ Socket Connected:", newSocket.id);
       set({ isConnected: true });
       newSocket.emit("join_room", userId);
     });
 
     newSocket.on("disconnect", () => {
-      console.log("❌ Socket Disconnected");
+      // console.log("❌ Socket Disconnected");
       set({ isConnected: false });
     });
 
@@ -47,7 +47,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   disconnect: () => {
     const { socket } = get();
     if (socket) {
-      console.log("🛑 Disconnecting Socket");
+      // console.log("🛑 Disconnecting Socket");
       socket.disconnect();
       set({ socket: null, isConnected: false });
     }

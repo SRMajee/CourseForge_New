@@ -53,6 +53,8 @@ import { api } from "~/services/api";
 import { Radio } from "~/components/ui/radio";
 import type { Route } from "./+types/dashboard";
 import { useConfigStore } from "~/store/configStore";
+import { CoursePDFButton } from "~/features/pdf/components/CoursePDFButton";
+import { ModulePDFButton } from "~/features/pdf/components/ModulePDFButton";
 
 // ✅ Update loader: Cast 'params' to ensure courseId is recognized
 export async function loader({ params }: Route.LoaderArgs) {
@@ -412,6 +414,22 @@ export default function CourseDetail() {
               <Text color="fg.muted" fontWeight="medium">
                 {course.modules?.length || 0} Modules
               </Text>
+              <Text color="fg.muted" fontWeight="medium">
+                &bull;
+              </Text>
+              <Text color="fg.muted" fontWeight="medium">
+                {course.modules?.reduce(
+                  (acc: number, m: any) => acc + (m.lessons?.length || 0),
+                  0,
+                )}{" "}
+                Lessons
+              </Text>
+              <Text color="fg.muted" fontWeight="medium">
+                &bull;
+              </Text>{" "}
+              <Text color="fg.muted" fontWeight="medium">
+                <CoursePDFButton course={course} />
+              </Text>
             </HStack>
             <HStack gap={3}>
               {/* ✅ NEW HISTORY DROPDOWN */}
@@ -563,34 +581,40 @@ export default function CourseDetail() {
             {course.modules?.map((module: any, idx: number) => (
               <Box key={module._id}>
                 <HStack mb={3} justify="space-between" className="group">
-                  <Text
-                    fontWeight="bold"
-                    color="fg.subtle"
-                    fontSize="xs"
-                    letterSpacing="wider"
-                    textTransform="uppercase"
-                  >
-                    {module.title}
-                  </Text>
-                  {currentVersion === totalVersions && (
-                    <IconButton
-                      aria-label="Delete Module"
-                      size="xs"
-                      colorPalette="red"
-                      variant="ghost"
-                      onClick={() =>
-                        setDeleteTarget({
-                          type: "module",
-                          id: module._id,
-                          title: module.title,
-                        })
-                      }
-                      opacity={0}
-                      _groupHover={{ opacity: 1 }}
+                  <HStack gap={3} >
+                    <Text
+                      fontWeight="bold"
+                      color="fg.subtle"
+                      fontSize="xs"
+                      letterSpacing="wider"
+                      textTransform="uppercase"
                     >
-                      <FaTrash />
-                    </IconButton>
-                  )}
+                      {module.title}
+                    </Text>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <ModulePDFButton
+                        module={module}
+                        courseTitle={course.title}
+                      />
+                    </div>
+                  </HStack>
+                  <IconButton
+                    aria-label="Delete Module"
+                    size="xs"
+                    colorPalette="red"
+                    variant="ghost"
+                    onClick={() =>
+                      setDeleteTarget({
+                        type: "module",
+                        id: module._id,
+                        title: module.title,
+                      })
+                    }
+                    opacity={0}
+                    _groupHover={{ opacity: 1 }}
+                  >
+                    <FaTrash />
+                  </IconButton>
                 </HStack>
 
                 <Box

@@ -16,6 +16,8 @@ import {
   refineLessonContent,
   getCourseVersion,
   getLessonVersion,
+  downloadModulePDF,
+  downloadCoursePDF,
 } from "../controllers/courseController";
 
 const router = Router();
@@ -43,5 +45,7 @@ router.post("/execute", executeCode);
 router.patch("/lessons/:lessonId/code", saveLessonCode);
 router.post("/lessons/:lessonId/refine", refineLessonContent);
 router.get("/:courseId/history/:versionIndex", getCourseVersion);
-router.get("/lessons/:lessonId/history/:versionIndex", getLessonVersion); // 👈 New Route
+router.get("/lessons/:lessonId/history/:versionIndex", getLessonVersion); 
+router.post("/modules/:moduleId/pdf", downloadModulePDF); // ✅ NEW Route
+router.post("/:courseId/pdf", downloadCoursePDF);
 export default router;

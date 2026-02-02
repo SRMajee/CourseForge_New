@@ -22,7 +22,10 @@ export const getAppConfig = async (req: Request, res: Response) => {
         generateLesson: CREDIT_COSTS.GENERATE_LESSON,
         generateAudio: CREDIT_COSTS.GENERATE_AUDIO,
         exportPdf: CREDIT_COSTS.EXPORT_PDF,
-        regenerate: 15, // If this is hardcoded, move it to env/constants
+        exportModulePdf: CREDIT_COSTS.EXPORT_MODULE_PDF,
+        exportCoursePdf: CREDIT_COSTS.EXPORT_COURSE_PDF,
+        regenerateCourse: CREDIT_COSTS.COST_REGENERATE_COURSE,
+        regenerateLesson: CREDIT_COSTS.COST_REGENERATE_LESSON,
       },
       costMenu: COST_MENU,
       pricing: {

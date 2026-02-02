@@ -11,7 +11,9 @@ export const CREDIT_COSTS = {
   COST_REGENERATE_COURSE_PRO: env.COST_REGENERATE_COURSE_PRO,
   COST_REGENERATE_LESSON: env.COST_REGENERATE_LESSON,
   COST_REGENERATE_LESSON_PRO: env.COST_REGENERATE_LESSON_PRO,
-};
+  EXPORT_MODULE_PDF: env.COST_EXPORT_MODULE_PDF,
+  EXPORT_COURSE_PDF: env.COST_EXPORT_COURSE_PDF,
+};  
 // The centralized Menu Object (Used by Frontend/API to display costs)
 export const COST_MENU = [
   {
@@ -62,6 +64,16 @@ export const COST_MENU = [
   {
     action: "Export PDF",
     cost: CREDIT_COSTS.EXPORT_PDF,
-    desc: "Downloadable course document",
+    desc: "Downloadable lesson document",
+  },
+  {
+    action: "Export Module PDF",
+    cost: CREDIT_COSTS.EXPORT_MODULE_PDF,
+    desc: "Downloadable module document",
+  },
+  {
+    action: "Export Full Course PDF",
+    cost: CREDIT_COSTS.EXPORT_COURSE_PDF,
+    desc: "Downloadable full course document",
   },
 ];

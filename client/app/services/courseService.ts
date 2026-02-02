@@ -56,6 +56,17 @@ export const saveCode = async (
   });
   return data;
 };
+export const deductModulePDFCredits = async (moduleId: string) => {
+  // ✅ NEW: Deduct credits for a full module
+  const { data } = await api.post(`/courses/modules/${moduleId}/pdf`);
+  return data;
+};
+
+export const deductCoursePDFCredits = async (courseId: string) => {
+  // ✅ NEW: Deduct credits for the entire course
+  const { data } = await api.post(`/courses/${courseId}/pdf`);
+  return data;
+};
 export class CourseService {
   static generateCourse = generateCourse;
   static getCourseById = getCourseById;
@@ -66,4 +77,6 @@ export class CourseService {
   static deductPDFCredits = deductPDFCredits;
   static executeCode = executeCode;
   static saveCode = saveCode;
+  static deductModulePDFCredits = deductModulePDFCredits;
+  static deductCoursePDFCredits = deductCoursePDFCredits;
 }
