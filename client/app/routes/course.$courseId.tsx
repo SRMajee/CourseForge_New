@@ -20,6 +20,7 @@ import {
   Menu,
   MenuItem,
   Portal,
+  Center,
 } from "@chakra-ui/react";
 import { useParams, Link, useSearchParams, useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +38,8 @@ import {
   FaClock,
   FaLayerGroup,
   FaChevronDown,
+  FaCoins,
+  FaSearch,
 } from "react-icons/fa";
 import {
   useDeleteCourse,
@@ -49,6 +52,7 @@ import { toaster } from "~/components/ui/toaster";
 import { api } from "~/services/api";
 import { Radio } from "~/components/ui/radio";
 import type { Route } from "./+types/dashboard";
+import { useConfigStore } from "~/store/configStore";
 
 // ✅ Update loader: Cast 'params' to ensure courseId is recognized
 export async function loader({ params }: Route.LoaderArgs) {
@@ -76,6 +80,7 @@ export default function CourseDetail() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const isPro = user?.planType === "PRO";
+  const { config } = useConfigStore(); // ✅ Get Config
 
   // 1. Fetch Latest Course
   const { data: latestCourse, isLoading: isLatestLoading } = useQuery({
@@ -149,7 +154,11 @@ export default function CourseDetail() {
   const [regenMode, setRegenMode] = useState<"standard" | "pro">(
     isPro ? "pro" : "standard",
   );
-
+  // Calculate Cost (Dynamic based on mode)
+  const regenCost =
+    regenMode === "pro"
+      ? config?.costs?.regenerateCoursePro || 75
+      : config?.costs?.regenerateCourse || 25;
   const regenerateMutation = useMutation({
     mutationFn: async (data: { instruction: string; mode: string }) => {
       return api.post(`/courses/${courseId}/regenerate`, data);
@@ -204,7 +213,46 @@ export default function CourseDetail() {
       </Flex>
     );
 
-  if (!course) return <Text p={10}>Course not found.</Text>;
+  if (!course)
+    return (
+      <Center h="100vh">
+        <Box
+          bg="rgba(20, 20, 20, 0.8)"
+          _light={{ bg: "rgba(255, 255, 255, 0.8)" }}
+          backdropFilter="blur(24px) saturate(180%)"
+          borderRadius="3xl"
+          borderWidth="1px"
+          borderColor="whiteAlpha.200"
+          boxShadow="0 20px 50px rgba(0,0,0,0.5)"
+          p={8}
+          textAlign="center"
+          maxW="md"
+          w="full"
+        >
+          <VStack gap={6}>
+            <Box
+              p={4}
+              bg="orange.500/20"
+              rounded="full"
+              color="orange.400"
+              fontSize="2xl"
+              boxShadow="0 0 20px rgba(237, 137, 54, 0.3)"
+            >
+              <Icon as={FaSearch} />
+            </Box>
+            <Box>
+              <Heading size="xl" mb={2}>
+                Course Not Found
+              </Heading>
+              <Text color="fg.muted">
+                The course you are looking for does not exist or has been
+                removed.
+              </Text>
+            </Box>
+          </VStack>
+        </Box>
+      </Center>
+    );
 
   // Prepare History Items for Dropdown
   // Combine historical entries + current (latest)
@@ -490,25 +538,24 @@ export default function CourseDetail() {
                 </Portal>
               </Menu.Root>
               {/* ✅ DELETE COURSE BUTTON */}
-              {currentVersion === totalVersions && (
-                <IconButton
-                  aria-label="Delete Course"
-                  variant="ghost"
-                  colorPalette="red"
-                  size="sm"
-                  rounded="full"
-                  onClick={() =>
-                    setDeleteTarget({
-                      type: "course",
-                      id: course._id,
-                      title: course.title,
-                    })
-                  }
-                  _hover={{ bg: "red.500/10", color: "red.400" }}
-                >
-                  <FaTrash />
-                </IconButton>
-              )}
+
+              <IconButton
+                aria-label="Delete Course"
+                variant="ghost"
+                colorPalette="red"
+                size="sm"
+                rounded="full"
+                onClick={() =>
+                  setDeleteTarget({
+                    type: "course",
+                    id: course._id,
+                    title: course.title,
+                  })
+                }
+                _hover={{ bg: "red.500/10", color: "red.400" }}
+              >
+                <FaTrash />
+              </IconButton>
             </HStack>
           </HStack>
           {/* Module List */}
@@ -642,60 +689,59 @@ export default function CourseDetail() {
       </Flex>
 
       {/* ✅ 3. FIXED REGENERATE BUTTON (Floating Bottom Right) */}
-      {currentVersion === totalVersions && (
-        <Box position="fixed" bottom={8} right={8} zIndex={100}>
-          <Button
-            size="xl"
-            bg="gray.900" // Always Black background
-            _dark={{ bg: "gray.900" }}
-            color="white"
-            variant="solid"
-            onClick={() => setRegenOpen(true)}
-            rounded="full"
-            shadow="2xl"
-            width="60px"
-            height="60px"
-            overflow="hidden"
-            transition="all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
-            display="flex"
-            justifyContent="center"
-            alignItems="center"
-            padding={0}
-            borderWidth="2px"
-            borderColor={isPro ? "purple.500" : "blue.500"} // ✅ Permanent Border
-            _hover={{
-              width: "180px", // Expand
-              paddingLeft: 6,
-              paddingRight: 6,
-              bg: "gray.900",
-              borderColor: isPro ? "purple.400" : "blue.400", // Brighter on hover
-            }}
-            className="group"
-          >
-            <HStack gap={0}>
-              <Icon
-                as={FaMagic}
-                fontSize="xl"
-                color={isPro ? "purple.400" : "blue.400"} // ✅ Visible Icon
-              />
 
-              {/* Text Container - Width animates from 0 to auto */}
-              <Box
-                maxW="0px"
-                overflow="hidden"
-                whiteSpace="nowrap"
-                transition="all 0.4s ease"
-                opacity={0}
-                _groupHover={{ maxW: "120px", opacity: 1, ml: 3 }} // Expand and add margin on hover
-              >
-                <Text fontWeight="bold" fontSize="md">
-                  Regenerate
-                </Text>
-              </Box>
-            </HStack>
-          </Button>
-        </Box>
-      )}
+      <Box position="fixed" bottom={8} right={8} zIndex={100}>
+        <Button
+          size="xl"
+          bg="gray.900" // Always Black background
+          _dark={{ bg: "gray.900" }}
+          color="white"
+          variant="solid"
+          onClick={() => setRegenOpen(true)}
+          rounded="full"
+          shadow="2xl"
+          width="60px"
+          height="60px"
+          overflow="hidden"
+          transition="all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          padding={0}
+          borderWidth="2px"
+          borderColor={isPro ? "purple.500" : "blue.500"} // ✅ Permanent Border
+          _hover={{
+            width: "180px", // Expand
+            paddingLeft: 6,
+            paddingRight: 6,
+            bg: "gray.900",
+            borderColor: isPro ? "purple.400" : "blue.400", // Brighter on hover
+          }}
+          className="group"
+        >
+          <HStack gap={0}>
+            <Icon
+              as={FaMagic}
+              fontSize="xl"
+              color={isPro ? "purple.400" : "blue.400"} // ✅ Visible Icon
+            />
+
+            {/* Text Container - Width animates from 0 to auto */}
+            <Box
+              maxW="0px"
+              overflow="hidden"
+              whiteSpace="nowrap"
+              transition="all 0.4s ease"
+              opacity={0}
+              _groupHover={{ maxW: "120px", opacity: 1, ml: 3 }} // Expand and add margin on hover
+            >
+              <Text fontWeight="bold" fontSize="md">
+                Regenerate
+              </Text>
+            </Box>
+          </HStack>
+        </Button>
+      </Box>
 
       {/* REGENERATION MODAL */}
       <Dialog.Root
@@ -787,6 +833,12 @@ export default function CourseDetail() {
               </VStack>
             </Dialog.Body>
             <Dialog.Footer>
+              <HStack mr="auto" gap={2} color="fg.muted">
+                <Icon as={FaCoins} color="yellow.400" />
+                <Text fontSize="sm" fontWeight="semibold">
+                  {regenCost} Credits
+                </Text>
+              </HStack>
               <Dialog.CloseTrigger asChild>
                 <Button variant="ghost" rounded="xl">
                   Cancel

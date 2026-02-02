@@ -10,11 +10,13 @@ export function ColorModeSwitcher() {
   // 1. Wait for client-side hydration to avoid mismatch errors
   useEffect(() => {
     setMounted(true);
+    setTheme("dark"); // Set default theme to light on mount
   }, []);
 
   if (!mounted) return null; // Or return a Skeleton/placeholder
 
   const isDark = theme === "dark";
+  // console.log("Current theme:", theme);
 
   return (
     <IconButton

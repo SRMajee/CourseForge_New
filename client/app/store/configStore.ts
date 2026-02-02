@@ -9,6 +9,10 @@ export interface AppConfig {
     generateAudio: number;
     exportPdf: number;
     createCoursePro: number;
+    regenerateCourse: number;
+    regenerateCoursePro: number;
+    regenerateLessonPro: number;
+    regenerateLesson: number;
   };
   // ✅ New Field: Syncs with backend COST_MENU
   costMenu: {
@@ -37,6 +41,10 @@ const DEFAULTS: AppConfig = {
     generateAudio: 15,
     exportPdf: 15,
     createCoursePro: 100,
+    regenerateCourse: 25,
+    regenerateCoursePro: 75,
+    regenerateLessonPro: 25,
+    regenerateLesson: 15,
   },
   // ✅ FIX: Added default to satisfy AppConfig interface
   costMenu: [],
@@ -56,7 +64,7 @@ export const useConfigStore = create<ConfigState>()(
         set({ isLoading: true });
         try {
           const { data } = await api.get("/config");
-          console.log("Fetched config from backend:", data);
+          // console.log("Fetched config from backend:", data);
           set({ config: data, isLoading: false });
         } catch (err) {
           console.error("Failed to sync config with backend", err);

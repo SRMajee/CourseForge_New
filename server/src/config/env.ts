@@ -41,6 +41,7 @@ const envSchema = z.object({
   // 👇 BUSINESS LOGIC (Automatically transforms "10" -> 10)
   COST_CREATE_COURSE: z.string().transform(Number).default("50"),
   COST_GENERATE_LESSON: z.string().transform(Number).default("35"),
+  COST_GENERATE_LESSON_PRO: z.string().transform(Number).default("70"),
   COST_GENERATE_AUDIO: z.string().transform(Number).default("15"),
   COST_EXPORT_PDF: z.string().transform(Number).default("15"),
   COST_CREATE_COURSE_PRO: z.string().transform(Number).default("100"),

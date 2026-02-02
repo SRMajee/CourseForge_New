@@ -3,7 +3,6 @@ import {
   Button,
   Flex,
   Heading,
-  Spacer,
   VStack,
   HStack,
   Spinner,
@@ -26,36 +25,42 @@ import {
 import { keyframes } from "@emotion/react";
 import type { Route } from "./+types/dashboard";
 
-// --- ANIMATIONS ---
+// --- META ---
 export function meta({}: Route.MetaArgs) {
   return [{ title: "CourseForge" }];
 }
-const float = keyframes`
-  0% { transform: translateY(0px) rotate(0deg); }
-  50% { transform: translateY(-30px) rotate(15deg); }
-  100% { transform: translateY(0px) rotate(0deg); }
-`;
 
-const drift = keyframes`
+// --- ANIMATIONS ---
+// 1. Fluid Blob Movement (Slower, Organic)
+const blobAnim = keyframes`
   0% { transform: translate(0px, 0px) scale(1); }
-  33% { transform: translate(60px, -50px) scale(1.1); }
-  66% { transform: translate(-40px, 20px) scale(0.9); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
   100% { transform: translate(0px, 0px) scale(1); }
 `;
 
+// 2. Slow Float for Icons
+const float = keyframes`
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(5deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+`;
+
+// 3. Text Shine (Liquid Metal look)
 const shine = keyframes`
   0% { background-position: 200% center; }
   100% { background-position: -200% center; }
 `;
 
+// 4. Entry Animation
 const fadeInUp = keyframes`
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(30px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 `;
 
 // --- COMPONENTS ---
 
-// Decorative Floating Icon
+// Decorative Floating Icon (Enhanced with Glass Blur behind it)
 const FloatingIcon = ({
   icon,
   top,
@@ -73,12 +78,13 @@ const FloatingIcon = ({
     right={right}
     bottom={bottom}
     color={color}
-    opacity={0.15}
+    opacity={0.2} // Slightly higher opacity
     fontSize={size}
-    animation={`${float} 5s ease-in-out infinite`}
+    animation={`${float} 8s ease-in-out infinite`} // Slower float
     style={{ animationDelay: `${delay}s` }}
-    zIndex={0}
+    zIndex={1}
     pointerEvents="none"
+    filter="drop-shadow(0 0 10px currentColor)" // Glow effect
   >
     <Icon as={icon} />
   </Box>
@@ -102,89 +108,115 @@ export default function Home() {
 
   return (
     <Box
-      h="100vh" // ✅ FORCE SINGLE PAGE NO SCROLL
+      h="100vh"
       w="100vw"
       position="relative"
       overflow="hidden"
       bg="gray.50"
-      _dark={{ bg: "#050505" }} // Deep black for better contrast
-      transition="background 0.2s"
+      _dark={{ bg: "#050505" }}
+      transition="background 0.5s ease"
     >
       {/* --- BACKGROUND LAYERS --- */}
 
-      {/* 1. Dynamic Gradient Blobs */}
-      <Box
-        position="absolute"
-        top="-20%"
-        left="-10%"
-        w="60vw"
-        h="60vw"
-        bgGradient="radial(circle, blue.400, transparent 70%)"
-        _dark={{ bgGradient: "radial(circle, blue.900, transparent 70%)" }}
-        filter="blur(120px)"
-        opacity="0.15" // Reduced opacity for text visibility
-        animation={`${drift} 5s infinite alternate`}
-        zIndex={0}
-      />
-      <Box
-        position="absolute"
-        bottom="-20%"
-        right="-10%"
-        w="50vw"
-        h="50vw"
-        bgGradient="radial(circle, purple.400, transparent 70%)"
-        _dark={{ bgGradient: "radial(circle, purple.900, transparent 70%)" }}
-        filter="blur(120px)"
-        opacity="0.15" // Reduced opacity for text visibility
-        animation={`${drift} 2s infinite alternate-reverse`}
-        zIndex={0}
-      />
-
-      {/* 2. Grid Overlay */}
+      {/* 1. NOISE TEXTURE (The "Premium" Glass Secret) */}
       <Box
         position="absolute"
         inset="0"
-        opacity={0.3}
-        _dark={{ opacity: 0.1 }}
-        bgImage="linear-gradient(#ccc 1px, transparent 1px), linear-gradient(90deg, #ccc 1px, transparent 1px)"
-        css={{
-          ".chakra-ui-dark &": {
-            backgroundImage:
-              "linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)",
-          },
+        zIndex={0}
+        opacity={0.4}
+        _dark={{ opacity: 0.2 }}
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E")`,
         }}
-        bgSize="60px 60px"
         pointerEvents="none"
+      />
+
+      {/* 2. Liquid Gradients (Blobs) */}
+      <Box
+        position="absolute"
+        top="-10%"
+        left="-10%"
+        w="70vw"
+        h="70vw"
+        bgGradient="radial(circle, blue.400, transparent 60%)"
+        _dark={{ bgGradient: "radial(circle, blue.600, transparent 60%)" }}
+        filter="blur(100px)"
+        opacity={0.4}
+        animation={`${blobAnim} 20s infinite alternate`} // Super slow liquid movement
+        zIndex={0}
+      />
+      <Box
+        position="absolute"
+        bottom="-10%"
+        right="-10%"
+        w="60vw"
+        h="60vw"
+        bgGradient="radial(circle, purple.400, transparent 60%)"
+        _dark={{ bgGradient: "radial(circle, purple.600, transparent 60%)" }}
+        filter="blur(100px)"
+        opacity={0.3}
+        animation={`${blobAnim} 25s infinite alternate-reverse`}
+        zIndex={0}
+      />
+      {/* 3rd Accent Blob for depth */}
+      <Box
+        position="absolute"
+        top="40%"
+        left="30%"
+        w="40vw"
+        h="40vw"
+        bgGradient="radial(circle, pink.300, transparent 60%)"
+        _dark={{ bgGradient: "radial(circle, cyan.800, transparent 60%)" }}
+        filter="blur(120px)"
+        opacity={0.2}
+        animation={`${blobAnim} 30s infinite alternate`}
         zIndex={0}
       />
 
-      {/* 3. Floating Icons */}
+      {/* 3. Grid Overlay (Subtle Tech feel) */}
+      <Box
+        position="absolute"
+        inset="0"
+        opacity={0.2}
+        bgImage="linear-gradient(#ccc 1px, transparent 1px), linear-gradient(90deg, #ccc 1px, transparent 1px)"
+        _dark={{
+          opacity: 0.1,
+          bgImage:
+            "linear-gradient(#444 1px, transparent 1px), linear-gradient(90deg, #444 1px, transparent 1px)",
+        }}
+        bgSize="80px 80px"
+        pointerEvents="none"
+        zIndex={0}
+        style={{ maskImage: "radial-gradient(circle, black, transparent 80%)" }} // Fade grid at edges
+      />
+
+      {/* 4. Floating Glass Icons */}
       <FloatingIcon
         icon={FaRobot}
         top="15%"
         left="8%"
-        color="blue.500"
+        color="blue.400"
         delay={0}
       />
       <FloatingIcon
         icon={FaCode}
-        bottom="15%"
-        left="12%"
-        color="purple.500"
+        bottom="18%"
+        left="15%"
+        color="purple.400"
         delay={2}
       />
       <FloatingIcon
         icon={FaLayerGroup}
-        top="20%"
-        right="10%"
-        color="pink.500"
+        top="25%"
+        right="12%"
+        color="pink.400"
         delay={1}
       />
       <FloatingIcon
         icon={FaMagic}
-        bottom="20%"
-        right="8%"
-        color="cyan.500"
+        bottom="22%"
+        right="10%"
+        color="cyan.400"
         delay={3}
       />
 
@@ -196,7 +228,7 @@ export default function Home() {
         w="full"
         zIndex={100}
         px={8}
-        py={4}
+        py={6}
         align="center"
         justify="space-between"
       >
@@ -207,6 +239,7 @@ export default function Home() {
             letterSpacing="tight"
             color="gray.900"
             _dark={{ color: "white" }}
+            style={{ backdropFilter: "blur(2px)" }} // Tiny readability boost
           >
             Course
             <Text as="span" color="blue.500">
@@ -217,7 +250,7 @@ export default function Home() {
         <ColorModeSwitcher />
       </Flex>
 
-      {/* --- HERO CONTENT (Centered Vertically) --- */}
+      {/* --- HERO CONTENT --- */}
       <Flex
         h="full"
         align="center"
@@ -226,56 +259,60 @@ export default function Home() {
         zIndex={10}
         px={4}
       >
-        <VStack gap={6} textAlign="center" maxW="3xl">
-          {/* Animated Badge */}
+        <VStack gap={8} textAlign="center" maxW="4xl">
+          {/* Glass Badge */}
           <Box
-            animation={`${fadeInUp} 0.8s ease-out`}
-            px={3}
-            py={1}
+            animation={`${fadeInUp} 1s cubic-bezier(0.2, 0.8, 0.2, 1)`}
+            px={5}
+            py={1.5}
             rounded="full"
-            bg="whiteAlpha.500"
-            borderWidth="1px"
-            borderColor="gray.900"
+            bg="whiteAlpha.400"
+            backdropFilter="blur(12px)" // Strong blur for glass effect
+            border="1px solid"
+            borderColor="whiteAlpha.400"
             _dark={{ bg: "whiteAlpha.100", borderColor: "whiteAlpha.200" }}
-            backdropFilter="blur(8px)"
+            boxShadow="0 4px 20px rgba(0,0,0,0.05)"
           >
             <Text
               fontSize="xs"
               fontWeight="bold"
               letterSpacing="widest"
               textTransform="uppercase"
-              // ✅ Fix: Added 'color="transparent"' and lighter colors for dark mode
               bgGradient="linear(to-r, blue.600, purple.600)"
               _dark={{
                 bgGradient: "linear(to-r, blue.300, purple.300)",
                 color: "white",
               }}
               bgClip="text"
-              color="gray.900" // ✅ Explicit dark color for Light Mode
+              color="gray.800"
             >
               The Future of Learning
             </Text>
           </Box>
 
-          {/* Main Title - Visibility Fixed */}
-          <Box animation={`${fadeInUp} 0.8s ease-out 0.2s backwards`}>
+          {/* Main Title */}
+          <Box
+            animation={`${fadeInUp} 1s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s backwards`}
+          >
             <Heading
-              size={{ base: "3xl", md: "6xl" }} // Slightly smaller to ensure fit
+              size={{ base: "3xl", md: "6xl", lg: "7xl" }}
               lineHeight="1.1"
-              fontWeight="800"
-              letterSpacing="tight"
-              color="gray.900" // ✅ Explicit dark color for Light Mode
-              _dark={{ color: "white" }} // ✅ Explicit white for Dark Mode
+              fontWeight="900"
+              letterSpacing="-0.02em"
+              color="gray.900"
+              _dark={{ color: "white" }}
+              textShadow="0 20px 40px rgba(0,0,0,0.1)" // Soft shadow for depth
             >
               Turn Ideas Into <br />
               <Text
                 as="span"
                 bgClip="text"
-                color="gray.900" // ✅ Explicit dark color for Light Mode
-                _dark={{ color: "white" }} // ✅ Explicit white for Dark Mode
-                bgGradient="linear(to-r, blue.400, purple.400, pink.400)"
-                backgroundSize="200% auto"
-                animation={`${shine} 4s linear infinite`}
+                color="gray.900"
+                _dark={{ color: "white" }}
+                bgGradient="linear(to-r, blue.400, purple.500, pink.500, blue.400)"
+                backgroundSize="300% auto"
+                animation={`${shine} 6s linear infinite`}
+                filter="drop-shadow(0 0 20px rgba(139, 92, 246, 0.3))" // Glowing text
               >
                 Interactive Courses
               </Text>
@@ -284,11 +321,12 @@ export default function Home() {
 
           {/* Subtitle */}
           <Text
-            fontSize={{ base: "md", md: "xl" }}
+            fontSize={{ base: "lg", md: "2xl" }}
             color="gray.600"
-            _dark={{ color: "gray.400" }}
+            _dark={{ color: "gray.300" }}
             maxW="2xl"
-            animation={`${fadeInUp} 0.8s ease-out 0.4s backwards`}
+            animation={`${fadeInUp} 1s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s backwards`}
+            fontWeight="medium"
           >
             Generate comprehensive syllabi, lessons, and quizzes in seconds with
             AI. No scrolling, just creating.
@@ -296,78 +334,83 @@ export default function Home() {
 
           {/* --- ACTION AREA --- */}
           <Box
-            mt={4}
-            animation={`${fadeInUp} 0.8s ease-out 0.6s backwards`}
+            mt={6}
+            animation={`${fadeInUp} 1s cubic-bezier(0.2, 0.8, 0.2, 1) 0.3s backwards`}
             w="full"
             display="flex"
             justifyContent="center"
           >
             {isLoading ? (
-              <Spinner size="md" color="blue.400" />
+              <Spinner size="lg" color="blue.400" />
             ) : isAuthenticated ? (
               <Button
                 asChild
-                size="lg" // ✅ Smaller, standard size
-                h="48px"
-                rounded="full" // ✅ Pill shape aesthetic
-                bgGradient="linear(to-r, blue.600, purple.600)"
-                _dark={{ color: "black" }}
-                color="white"
-                px={8}
-                fontSize="md"
-                fontWeight="semibold"
+                size="lg"
+                h="60px" // Taller button
+                rounded="full"
+                bgGradient="linear(to-r, blue.500, purple.600)"
                 _hover={{
-                  bgGradient: "linear(to-r, blue.500, purple.500)",
-                  transform: "translateY(-1px)",
-                  boxShadow: "0 10px 20px rgba(66, 153, 225, 0.4)",
+                  bgGradient: "linear(to-r, blue.400, purple.500)",
+                  transform: "translateY(-2px)",
+                  boxShadow: "0 20px 40px -10px rgba(66, 153, 225, 0.5)",
                 }}
-                transition="all 0.2s"
+                _active={{ transform: "translateY(0)" }}
+                color="white"
+                px={10}
+                _dark={{ color: "gray.900"}}
+                fontSize="lg"
+                fontWeight="bold"
+                transition="all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)"
               >
                 <Link to="/dashboard">
-                  Go to Dashboard <Icon as={FaArrowRight} ml={2} size="sm" />
+                  Go to Dashboard <Icon as={FaArrowRight} ml={2} />
                 </Link>
               </Button>
             ) : (
-              <SimpleGrid columns={{ base: 1, sm: 2 }} gap={3}>
+              <SimpleGrid columns={{ base: 1, sm: 2 }} gap={4}>
+                {/* Secondary Button - Glass Ghost */}
                 <Button
-                  size="lg" // ✅ Smaller
-                  h="48px"
+                  size="lg"
+                  h="56px"
                   variant="ghost"
                   rounded="full"
                   px={8}
-                  fontSize="sm"
+                  fontSize="md"
                   color="gray.700"
-                  _dark={{ color: "gray.300" }}
+                  bg="whiteAlpha.50"
+                  backdropFilter="blur(5px)"
                   borderWidth="1px"
-                  borderColor="transparent"
+                  borderColor="gray.200"
+                  _dark={{ color: "white", borderColor: "whiteAlpha.200" }}
                   _hover={{
-                    bg: "gray.100",
-                    _dark: {
-                      bg: "whiteAlpha.100",
-                      borderColor: "whiteAlpha.300",
-                    },
+                    bg: "whiteAlpha.200",
+                    borderColor: "blue.400",
+                    transform: "translateY(-2px)",
                   }}
+                  transition="all 0.3s"
                   onClick={handleLogin}
                 >
                   <Icon as={FaSignInAlt} mr={2} /> Log In
                 </Button>
 
+                {/* Primary Button - Liquid Gradient */}
                 <Button
-                  size="lg" // ✅ Smaller
-                  h="48px"
+                  size="lg"
+                  h="56px"
                   rounded="full"
                   bg="gray.900"
                   _dark={{ bg: "white", color: "black" }}
                   color="white"
                   px={8}
-                  fontSize="sm"
+                  fontSize="md"
                   fontWeight="bold"
-                  shadow="md"
+                  shadow="xl"
                   _hover={{
-                    transform: "translateY(-1px)",
-                    shadow: "lg",
-                    opacity: 0.9,
+                    transform: "translateY(-2px) scale(1.02)",
+                    shadow: "2xl",
+                    opacity: 0.95,
                   }}
+                  transition="all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)"
                   onClick={handleSignup}
                 >
                   <Icon as={FaUserPlus} mr={2} /> Sign Up Free

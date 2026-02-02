@@ -46,6 +46,7 @@ import {
   FaChevronDown,
   FaClock,
   FaTrash,
+  FaSearch,
 } from "react-icons/fa";
 import { LessonContentRenderer } from "~/features/lesson/components/LessonContentRenderer";
 import { LessonPDFExporter } from "~/features/lesson/components/LessonPDFExporter";
@@ -162,6 +163,11 @@ export default function LessonPage() {
   const [regenMode, setRegenMode] = useState<"standard" | "pro">(
     isPro ? "pro" : "standard",
   );
+  // ✅ Calculate Cost (Dynamic based on mode)
+  const regenCost =
+    regenMode === "pro"
+      ? getCost("regenerateLessonPro") || 75
+      : getCost("regenerateLesson") || 25;
 
   const refineMutation = useMutation({
     mutationFn: async (data: { instruction: string; mode: string }) => {
@@ -246,9 +252,41 @@ export default function LessonPage() {
   if (!lesson)
     return (
       <Center h="100vh">
-        <Text fontSize="lg" color="fg.muted">
-          Lesson not found
-        </Text>
+        <Box
+          bg="rgba(20, 20, 20, 0.8)"
+          _light={{ bg: "rgba(255, 255, 255, 0.8)" }}
+          backdropFilter="blur(24px) saturate(180%)"
+          borderRadius="3xl"
+          borderWidth="1px"
+          borderColor="whiteAlpha.200"
+          boxShadow="0 20px 50px rgba(0,0,0,0.5)"
+          p={8}
+          textAlign="center"
+          maxW="md"
+          w="full"
+        >
+          <VStack gap={6}>
+            <Box
+              p={4}
+              bg="orange.500/20"
+              rounded="full"
+              color="orange.400"
+              fontSize="2xl"
+              boxShadow="0 0 20px rgba(237, 137, 54, 0.3)"
+            >
+              <Icon as={FaSearch} />
+            </Box>
+            <Box>
+              <Heading size="xl" mb={2}>
+                Lesson Not Found
+              </Heading>
+              <Text color="fg.muted">
+                The Lesson you are looking for does not exist or has been
+                removed.
+              </Text>
+            </Box>
+          </VStack>
+        </Box>
       </Center>
     );
 
@@ -277,7 +315,8 @@ export default function LessonPage() {
       <HStack justify="space-between" mb={4}>
         <Button
           variant="ghost"
-          onClick={() => navigate(`/course/${courseId}`)} // ✅ Explicitly navigate to course root          _hover={{ bg: "whiteAlpha.200" }}
+          onClick={() => navigate(`/course/${courseId}`)} // ✅ Explicitly navigate to course root
+          _hover={{ bg: "whiteAlpha.200" }}
         >
           <FaArrowLeft /> Back to Course
         </Button>
@@ -448,16 +487,18 @@ export default function LessonPage() {
             {/* ✅ SPACER PUSHES DELETE BUTTON TO RIGHT END */}
             <Spacer />
 
-            <IconButton
-              aria-label="Delete Lesson"
-              size="sm"
-              colorPalette="red"
-              variant="ghost"
-              loading={isDeleting}
-              onClick={() => setDeleteOpen(true)} // 👈 Open Modal instead of confirm()
-            >
-              <FaTrash />
-            </IconButton>
+            {hasContent && (
+              <IconButton
+                aria-label="Delete Lesson"
+                size="sm"
+                colorPalette="red"
+                variant="ghost"
+                loading={isDeleting}
+                onClick={() => setDeleteOpen(true)}
+              >
+                <FaTrash />
+              </IconButton>
+            )}
           </HStack>
         </Box>
 
@@ -656,8 +697,8 @@ export default function LessonPage() {
         )}
       </VStack>
 
-      {/* ✅ FIXED ACTION BUTTON (Refine) - Bottom Right */}
-      {hasContent && currentVersion === totalVersions && (
+      {/*FIXED ACTION BUTTON (Refine) - Bottom Right */}
+      {hasContent && (
         <Box position="fixed" bottom={8} right={8} zIndex={100}>
           <Button
             size="xl"
@@ -800,6 +841,12 @@ export default function LessonPage() {
               </VStack>
             </Dialog.Body>
             <Dialog.Footer>
+              <HStack mr="auto" gap={2} color="fg.muted">
+                <Icon as={FaCoins} color="yellow.400" />
+                <Text fontSize="sm" fontWeight="semibold">
+                  {regenCost} Credits
+                </Text>
+              </HStack>
               <Dialog.CloseTrigger asChild>
                 <Button variant="ghost" rounded="xl">
                   Cancel

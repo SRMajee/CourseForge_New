@@ -23,6 +23,7 @@ import {
   FaPlus,
   FaSignOutAlt, // 👈 Add Icon
 } from "react-icons/fa";
+import { Link } from "react-router";
 import { ColorModeSwitcher } from "~/components/common/ColorModeSwitcher";
 import { Tooltip } from "~/components/ui/tooltip";
 import { TopUpModal } from "~/features/payment/components/TopUpModal";
@@ -92,17 +93,22 @@ export const Navbar = ({ onToggleSidebar }: NavbarProps) => {
             <FaBars />
           </IconButton>
           <HStack align="center" gap={2}>
-            <Heading
-              size="md"
-              fontWeight="bold"
-              letterSpacing="tight"
-              opacity={0.9}
-            >
-              Course
-              <Text as="span" color="blue.500">
-                Forge
-              </Text>
-            </Heading>
+            <Link to="/">
+              <Heading
+                size="md"
+                fontWeight="bold"
+                letterSpacing="tight"
+                opacity={0.9}
+                cursor="pointer"
+                transition="opacity 0.2s"
+                _hover={{ opacity: 1 }}
+              >
+                Course
+                <Text as="span" color="blue.500">
+                  Forge
+                </Text>
+              </Heading>
+            </Link>
             {isAuthenticated && (
               <Badge
                 variant="surface"

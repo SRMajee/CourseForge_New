@@ -3,6 +3,7 @@ import { env } from "./env";
 export const CREDIT_COSTS = {
   CREATE_COURSE: env.COST_CREATE_COURSE,
   CREATE_COURSE_PRO: env.COST_CREATE_COURSE_PRO,
+  GENERATE_LESSON_PRO: env.COST_GENERATE_LESSON_PRO,
   GENERATE_LESSON: env.COST_GENERATE_LESSON,
   GENERATE_AUDIO: env.COST_GENERATE_AUDIO,
   EXPORT_PDF: env.COST_EXPORT_PDF,
@@ -32,6 +33,11 @@ export const COST_MENU = [
     action: "Regenerate Course Structure",
     cost: CREDIT_COSTS.COST_REGENERATE_COURSE,
     desc: "Regenerate modules & lesson titles Non Pro",
+  },
+  {
+    action: "Generate Lesson Content PRO",
+    cost: CREDIT_COSTS.GENERATE_LESSON_PRO,
+    desc: "AI writes the full lesson text Pro",
   },
   {
     action: "Generate Lesson Content",

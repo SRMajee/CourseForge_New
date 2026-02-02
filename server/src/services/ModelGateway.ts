@@ -51,8 +51,8 @@ export class ModelGateway {
             "llama-3.3-70b-versatile",
             jsonMode,
           );
-          // console.log("🧠 [Factory] Routing to DeepSeek-V3...");
-          // return this.callDeepSeek(prompt, systemInstruction, jsonMode);
+        // console.log("🧠 [Factory] Routing to DeepSeek-V3...");
+        // return this.callDeepSeek(prompt, systemInstruction, jsonMode);
 
         case TaskTier.CREATIVE_WRITING:
           return this.callGroq(
@@ -77,7 +77,7 @@ export class ModelGateway {
             "llama-3.3-70b-versatile",
             jsonMode,
           );
-          // return this.callGemini(prompt, systemInstruction);
+          return this.callGemini(prompt, systemInstruction);
 
         default:
           throw new Error("Invalid Task Tier");
@@ -204,6 +204,43 @@ export class ModelGateway {
       metadata: { ls_provider: "google" },
     },
   );
+  // 4. OpenAI (ChatGPT) Driver
+  private callChatGPT = traceable(
+    async (
+      prompt: string,
+      system?: string,
+      modelId: string = "gpt-4o", // Default to GPT-4o
+      jsonMode?: boolean,
+    ) => {
+      const run = getCurrentRunTree();
+      return retryWithBackoff(async () => {
+        const response = await this.openai.chat.completions.create({
+          model: modelId,
+          messages: [
+            {
+              role: "system",
+              content: system || "You are a helpful AI assistant.",
+            },
+            { role: "user", content: prompt },
+          ],
+          // ✅ OpenAI supports JSON mode natively
+          response_format: jsonMode ? { type: "json_object" } : undefined,
+          temperature: 0.7,
+        });
+
+        const usage = response.usage;
+        if (run && usage) {
+          run.metadata = { ...run.metadata, token_usage: usage };
+        }
+        return response.choices[0].message.content || "";
+      });
+    },
+    {
+      name: "OpenAI ChatGPT",
+      run_type: "llm",
+      metadata: { ls_provider: "openai" },
+    },
+  );
 
   /**
    * SELF-HEALING GENERATOR (Simplified for Phase 2)
@@ -276,4 +313,3 @@ export class ModelGateway {
 }
 
 export const modelGateway = new ModelGateway();
-

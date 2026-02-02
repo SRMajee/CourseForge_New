@@ -6,6 +6,7 @@ import {
   SimpleGrid,
   Box,
   Icon,
+  Flex,
 } from "@chakra-ui/react";
 import { useState, useEffect } from "react";
 import type { Route } from "./+types/dashboard";
@@ -93,12 +94,73 @@ export default function Dashboard() {
 
   if (viewState === "generating" && jobId) {
     return (
-      <Container maxW="container.md" centerContent py={20}>
-        <Heading mb={8} size="xl" fontWeight="light">
-          Constructing Intelligence...
-        </Heading>
-        <CourseTerminal jobId={jobId} />
-      </Container>
+      <Flex
+        align="center"
+        justify="center"
+        minH="60vh"
+        position="relative"
+        w="full"
+        px={4}
+      >
+        {/* --- Ambient Liquid Glow --- */}
+        <Box
+          position="absolute"
+          top="50%"
+          left="50%"
+          transform="translate(-50%, -50%)"
+          w="600px"
+          h="600px"
+          bgGradient="radial(circle, blue.500, transparent 60%)"
+          _dark={{ bgGradient: "radial(circle, blue.600, transparent 60%)" }}
+          filter="blur(150px)"
+          opacity={0.15}
+          zIndex={0}
+          pointerEvents="none"
+        />
+
+        {/* --- Glass Card Container --- */}
+        <VStack
+          position="relative"
+          zIndex={1}
+          w="full"
+          maxW="container.md"
+          p={{ base: 6, md: 12 }}
+          bg="whiteAlpha.50"
+          // High blur + saturation = Premium Liquid Glass
+          backdropFilter="blur(30px) saturate(160%)"
+          borderRadius="3xl"
+          border="1px solid"
+          borderColor="whiteAlpha.300"
+          _dark={{ bg: "blackAlpha.200", borderColor: "whiteAlpha.100" }}
+          boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.15)"
+          gap={8}
+        >
+          <Heading
+            size="xl"
+            fontWeight="bold"
+            bgGradient="linear(to-r, blue.400, purple.500)"
+            bgClip="text"
+            letterSpacing="tight"
+            textAlign="center"
+            filter="drop-shadow(0 0 20px rgba(66, 153, 225, 0.3))"
+          >
+            Constructing Intelligence...
+          </Heading>
+
+          <Box
+            w="full"
+            rounded="xl"
+            overflow="hidden"
+            // Subtle inset to make the terminal look embedded in the glass
+            bg="blackAlpha.300"
+            border="1px solid"
+            borderColor="whiteAlpha.100"
+            shadow="inner"
+          >
+            <CourseTerminal jobId={jobId} />
+          </Box>
+        </VStack>
+      </Flex>
     );
   }
 
