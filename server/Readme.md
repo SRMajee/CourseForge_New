@@ -5,6 +5,19 @@ docker-compose -f docker-compose.dev.yml logs -f api
 
 stripe login
 stripe listen --forward-to localhost:8080/api/v1/payment/webhook
+
+# Run tests once and exit
+docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
+
+# OR Run in watch mode (great for development)
+docker-compose -f docker-compose.test.yml run --rm test_runner pnpm test -- --watch
+
+# 1. Destroy containers and volumes to wipe the bad RS config
+docker-compose -f docker-compose.test.yml down -v
+
+# 2. Rebuild and Run
+docker-compose -f docker-compose.test.yml run --rm test_runner
+
 This is a smart approach. Building in distinct phases reduces cognitive load and prevents "spaghetti code."
 
 Here is the recommended **Phase Roadmap** for building the "Text-to-Learn" backend, structured by logical dependencies.

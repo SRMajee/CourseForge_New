@@ -1,0 +1,60 @@
+services:
+  # 🟢 Test Runner
+  test_runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps
+    container_name: courseforge_test_runner
+    env_file:
+      - .env.test
+    environment:
+      - CI=true
+      - NODE_OPTIONS=--max-old-space-size=4096
+      # Explicit overrides to guarantee presence
+      - GROQ_API_KEY=mock_groq
+      - GEMINI_API_KEY=mock_gemini
+      - MONGO_URI=mongodb://mongo:27017/courseforge_test
+    command: pnpm exec jest --runInBand --logHeapUsage --detectOpenHandles
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./jest.config.js:/app/jest.config.js
+      - ./package.json:/app/package.json
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - test_network
+
+  # 🟢 Isolated MongoDB (Replica Set)
+  mongo:
+    image: mongo:6.0
+    container_name: courseforge_test_mongo
+    hostname: mongo # ✅ Explicit hostname
+    ports:
+      - "27018:27017"
+    tmpfs:
+      - /data/db
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    networks:
+      - test_network
+    healthcheck:
+      test: |
+        # ✅ FIX: Initialize RS using 'mongo:27017' so clients know the correct address
+        test $$(mongosh --quiet --eval "try { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}) } catch(e) { rs.status().ok }") -eq 1
+      interval: 10s
+      start_period: 5s
+
+  # 🟢 Isolated Redis
+  redis:
+    image: redis:alpine
+    container_name: courseforge_test_redis
+    networks:
+      - test_network
+
+networks:
+  test_network:
+    driver: bridge
