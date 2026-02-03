@@ -20,6 +20,21 @@ jest.mock("../../src/config/env", () => ({
   },
 }));
 
+// 🚨 FIX: Mock Redis to prevent real connection attempts 🚨
+jest.mock("../../src/config/redis", () => ({
+  redisClient: {
+    get: jest.fn(),
+    set: jest.fn(),
+    setex: jest.fn(),
+    del: jest.fn(),
+    on: jest.fn(),
+    connect: jest.fn(),
+  },
+  redisConnection: {
+    on: jest.fn(),
+  },
+}));
+
 // ✅ 3. Mock Stripe Config & SDK
 const mockStripe = {
   checkout: {
@@ -77,10 +92,14 @@ jest.mock("../../src/middleware/authMiddleware", () => ({
 jest.mock("../../src/middleware/attachUser", () => {
   return {
     attachUser: async (req: any, res: any, next: any) => {
-      const { User } = require("../../src/models/User");
-      const user = await User.findOne({ auth0Id: "auth0|test_user" });
-      if (user) req.user = user;
-      next();
+      try {
+        const { User } = require("../../src/models/User");
+        const user = await User.findOne({ auth0Id: "auth0|test_user" });
+        if (user) req.user = user;
+        next();
+      } catch (err) {
+        next(err);
+      }
     },
   };
 });
@@ -118,7 +137,9 @@ describe("Payment & Subscription Integration", () => {
   });
 
   beforeEach(async () => {
-    await User.deleteMany({});
+    if (mongoose.connection.readyState === 1) {
+      await User.deleteMany({});
+    }
 
     // Create Test User with Subscription info for update tests
     const user = await User.create({

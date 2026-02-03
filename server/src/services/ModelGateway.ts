@@ -62,6 +62,12 @@ export class ModelGateway {
         // return this.callDeepSeek(prompt, systemInstruction, jsonMode);
 
         case TaskTier.CREATIVE_WRITING:
+          // return this.callChatGPT(
+          //   prompt,
+          //   systemInstruction,
+          //   "gpt-4o",
+          //   jsonMode,
+          // );
           return this.callGroq(
             prompt,
             systemInstruction,

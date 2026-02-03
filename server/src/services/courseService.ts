@@ -17,6 +17,8 @@ import { creditService } from "./creditService"; // 👈 Import
 import { redisClient } from "../config/redis";
 import { imageService } from "./imageService";
 import { getVectorStore } from "./vectorStore";
+import { youtubeService } from "./youtubeService";
+import { codeExecutionService } from "./CodeExecutionService";
 
 export class ClarificationNeededError extends Error {
   public data: any;
@@ -378,27 +380,104 @@ export class CourseService {
         USER INSTRUCTION: "${instruction}"
         
         OUTPUT REQUIREMENT:
-        Generate a VALID JSON object containing the full lesson content.
-        
-        JSON STRUCTURE:
-        {
-          "_thought": "Plan for refinement...",
-          "title": "${lesson.title}",
-          "objectives": ["Obj 1", "Obj 2"],
-          "content": [
-            { "type": "heading", "text": "..." },
-            { "type": "paragraph", "text": "..." },
-            { "type": "code", "language": "js", "code": "..." },
-            { "type": "mcq", "question": "...", "options": [], "answer": 0, "explanation": "..." }
-          ]
-        }
+        Generate the strict JSON content array based on your plan.
+
+      ALLOWED BLOCK TYPES:
+      - { "type": "heading", "text": "..." }
+      - { "type": "paragraph", "text": "..." }
+      - { "type": "code", "language": "javascript", "code": "..." }
+      - { "type": "mcq", "question": "...", "options": ["A", "B"], "answer": 0, "explanation": "..." }
+      - { "type": "video", "query": "exact search term for youtube" } 
+      - { "type": "link", "title": "...", "url": "https://..." }
+ 
+          EXAMPLE OUTPUT:
+      {
+        "_thought": "I will explain Loops using a real-world analogy of a factory line...",
+        "title": "Lesson Title",
+        "objectives": ["Obj 1", "Obj 2"],
+        "content": [
+          { "type": "heading", "text": "Introduction" },
+          { "type": "paragraph", "text": "Concept explanation..." },
+          { "type": "code", "language": "python", "code": "print('Hello')" },
+          { "type": "video", "query": "Python loops tutorial" },
+          { "type": "mcq", "question": "What is X?", "options": ["A", "B"], "answer": 0, "explanation": "Reason." }
+          { "type": "link", "title": "...", "url": "https://..." }
+        ]
+      }
       `;
 
-      const refinedContent = await modelGateway.generateStructured(
+      let refinedLesson = await modelGateway.generateStructured(
         prompt,
         lessonResponseSchema,
         tier,
       );
+      if (refinedLesson.content && Array.isArray(refinedLesson.content)) {
+        logger.info("🎥 Enriching lesson with YouTube content...");
+
+        const enrichedContent = await Promise.all(
+          refinedLesson.content.map(async (block: any) => {
+            // ✅ FIX 1: Process ALL video blocks (even if query is missing)
+            if (block.type === "video") {
+              const query = block.query || lesson.title;
+              let videoData = null;
+
+              if (query) {
+                // ✅ SAFETY: Wrap in try/catch to ensure Quota errors don't crash generation
+                try {
+                  videoData = await youtubeService.searchVideo(query);
+                } catch (e) {
+                  logger.warn(
+                    `Bypassed YouTube search for "${query}" due to error.`,
+                  );
+                  videoData = null;
+                }
+              }
+
+              if (videoData) {
+                return {
+                  type: "video",
+                  url: `https://www.youtube.com/watch?v=${videoData.videoId}`,
+                  title: videoData.title,
+                  thumbnail: videoData.thumbnail,
+                };
+              } else {
+                // ✅ FIX 2: Safe Fallback Link
+                const safeQuery = query || "Educational Video";
+                logger.warn(
+                  `⚠️ YouTube fallback active for: "${safeQuery}". Generating Link block.`,
+                );
+
+                return {
+                  type: "link",
+                  title: `Watch Related Video: ${safeQuery}`,
+                  url: `https://www.youtube.com/results?search_query=${encodeURIComponent(safeQuery)}`,
+                  description: `Click here to search for videos about ${safeQuery}`,
+                };
+              }
+            }
+            if (block.type === "code") {
+              // This will execute python code, fix errors, and return verified code
+              return await codeExecutionService.verifyCodeBlock(block);
+            }
+            // ✅ FIX 3: Sanitize AI-Hallucinated Broken Links
+            if (block.type === "link") {
+              if (!block.url || block.url.includes("undefined")) {
+                const cleanQuery = block.title || lesson.title;
+                return {
+                  ...block,
+                  url: `https://www.google.com/search?q=${encodeURIComponent(cleanQuery)}`,
+                  description:
+                    block.description || "Learn more about this topic",
+                };
+              }
+            }
+
+            return block;
+          }),
+        );
+
+        refinedLesson.content = enrichedContent;
+      }
 
       if (!lesson.history) lesson.history = [];
 
@@ -413,8 +492,8 @@ export class CourseService {
         generationMode: (lesson as any).generationMode || "standard",
       });
 
-      lesson.content = refinedContent.content;
-      lesson.objectives = refinedContent.objectives || lesson.objectives;
+      lesson.content = refinedLesson.content;
+      lesson.objectives = refinedLesson.objectives || lesson.objectives;
       lesson.isEnriched = true;
       // @ts-ignore
       lesson.generationMode = mode; // Update current mode

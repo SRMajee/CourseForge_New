@@ -3,17 +3,6 @@ import { lessonService } from "../../src/services/lessonService";
 import { Lesson } from "../../src/models/Lesson";
 import { creditService } from "../../src/services/creditService";
 import { User } from "../../src/models/User";
-
-// Mocks
-jest.mock("../../src/models/Lesson");
-jest.mock("../../src/models/User");
-jest.mock("../../src/services/creditService");
-jest.mock("../../src/services/ModelGateway");
-jest.mock("../../src/services/ResearchService");
-jest.mock("../../src/utils/semanticCache", () => ({
-  semanticCache: { getCachedLesson: jest.fn(), setCachedLesson: jest.fn() },
-}));
-// ✅ MOCK REDIS PREVENTING CONNECTION ATTEMPTS
 jest.mock("../../src/config/redis", () => ({
   redisClient: {
     get: jest.fn(),
@@ -23,12 +12,21 @@ jest.mock("../../src/config/redis", () => ({
     on: jest.fn(),
     connect: jest.fn(),
   },
-  // We must also mock the connection used by Queues
   redisConnection: {
     on: jest.fn(),
     quit: jest.fn(),
   },
 }));
+// Mocks
+jest.mock("../../src/models/Lesson");
+jest.mock("../../src/models/User");
+jest.mock("../../src/services/creditService");
+jest.mock("../../src/services/ModelGateway");
+jest.mock("../../src/services/ResearchService");
+jest.mock("../../src/utils/semanticCache", () => ({
+  semanticCache: { getCachedLesson: jest.fn(), setCachedLesson: jest.fn() },
+}));
+
 describe("LessonService Unit Tests", () => {
   const mockLessonId = "lesson_123";
   const mockUserId = "user_123";

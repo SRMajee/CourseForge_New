@@ -19,14 +19,30 @@ import { codeExecutionService } from "./CodeExecutionService";
 import { creditService } from "./creditService";
 import { socketService } from "./socketService";
 import { getVectorStore } from "./vectorStore";
+import { redisClient } from "../config/redis";
 export class LessonService {
   /**
    * ✅ VALIDATION HELPER
    */
-  async validateBalance(userId: string, cost: number) {
-    const user = await User.findById(userId);
-    if (!user || user.credits < cost) {
-      throw new Error(`Insufficient credits. Required: ${cost}`);
+  async validateBalance(userId: string, cost: number): Promise<void> {
+    let balance = await creditService.getBalance(userId);
+    if (balance < cost) {
+      const user = await User.findById(userId).select("credits");
+      const dbBalance = user?.credits || 0;
+
+      if (dbBalance >= cost) {
+        // Drift detected! Heal the cache.
+        logger.warn(
+          `⚠️ Credit Cache Drift Detected: Redis(${balance}) < DB(${dbBalance}). Syncing...`,
+        );
+        await redisClient.set(`user:${userId}:credits`, dbBalance);
+        balance = dbBalance; // Update local var to allow progression
+      } else {
+        // Truly insufficient
+        throw new Error(
+          `Insufficient credits. Required: ${cost}, Available: ${balance}`,
+        );
+      }
     }
   }
   // ✅ NEW: Handle PDF Credit Deduction
@@ -137,11 +153,12 @@ export class LessonService {
       You are an interactive course creator.
       ${ragContext ? `📚 INTERNAL KNOWLEDGE BASE (Use this content primarily):\n${ragContext}\n` : ""}
       STEP 1: CONTENT PLANNING (_thought)
-      In the '_thought' field, outline the lesson flow. 
+      In the '_thought' field, outline the lesson flow.
       - Start with a Hook/Objective.
       - Explain the Concept clearly.
       - Provide a Code Example (if technical).
       - Search for a Video (using 'query').
+      - Provide a Link for further reading.
       - End with a Knowledge Check (MCQ).
       
       STEP 2: JSON GENERATION
@@ -166,6 +183,7 @@ export class LessonService {
           { "type": "code", "language": "python", "code": "print('Hello')" },
           { "type": "video", "query": "Python loops tutorial" },
           { "type": "mcq", "question": "What is X?", "options": ["A", "B"], "answer": 0, "explanation": "Reason." }
+          { "type": "link", "title": "...", "url": "https://..." }
         ]
       }
       `;
