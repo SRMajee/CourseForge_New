@@ -3,11 +3,11 @@ import { courseWorker } from './courseWorker'; // Import your existing worker
 import logger from '../utils/logger';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // 1. Dummy Health Check for Render
-app.get('/', (req, res) => {
-  res.send('Worker is running...');
+app.get('/health', (req, res) => {
+  res.status(200).send('Worker is active and processing jobs!');
 });
 
 // 2. Start the HTTP Server (Required to prevent Render from killing the app)

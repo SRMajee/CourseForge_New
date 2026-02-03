@@ -11,7 +11,7 @@
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write \"src/**/*.{ts,json}\"",
     "test": "jest",
-    "worker": "node dist/worker.js"
+    "worker": "node dist/workers/worker-entry.js"
   },
   "keywords": [],
   "author": "",
