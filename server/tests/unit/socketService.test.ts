@@ -1,10 +1,34 @@
-import { socketService } from "../../src/services/socketService";
 import { Server } from "socket.io";
-import logger from "../../src/utils/logger";
 
-// Mock socket.io
-jest.mock("socket.io");
+// ✅ 1. Mock Env FIRST (Prevents process.exit(1) crash)
+jest.mock("../../src/config/env", () => ({
+  env: {
+    NODE_ENV: "test",
+    PORT: 5000,
+  },
+}));
+
+// ✅ 2. Mock Redis (Prevents potential connection errors if service imports it)
+jest.mock("../../src/config/redis", () => ({
+  redisClient: {
+    get: jest.fn(),
+    set: jest.fn(),
+    del: jest.fn(),
+    on: jest.fn(),
+    connect: jest.fn(),
+  },
+  redisConnection: {
+    on: jest.fn(),
+  },
+}));
+
+// ✅ 3. Mock Logger & Socket.io
 jest.mock("../../src/utils/logger");
+jest.mock("socket.io");
+
+// ✅ 4. Import Dependencies
+import { socketService } from "../../src/services/socketService";
+import logger from "../../src/utils/logger";
 
 describe("SocketService Unit", () => {
   let mockIo: any;
