@@ -279,7 +279,7 @@ export const ClarificationForm = ({
                 </Button>
               </Flex>
             ) : (
-              <HStack w="full" maxW="350px">
+              <HStack w="full">
                 <Input
                   placeholder="Type..."
                   value={textInput}

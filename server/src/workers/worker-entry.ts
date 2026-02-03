@@ -1,22 +1,34 @@
 import express from "express";
-import { courseWorker } from "./courseWorker"; // Triggers the worker instantiation
+import { connectDB } from "../config/db"; // 👈 IMPORT THIS
+import { courseWorker } from "./courseWorker";
 import logger from "../utils/logger";
 
 const app = express();
-// Render automatically sets this env var
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
-// 1. Dummy Health Check for Render (and UptimeRobot)
-app.get("/health", (req, res) => {
-  res.status(200).send("Worker is active and processing jobs!");
+// 1. Dummy Health Check for Render
+app.get("/", (req, res) => {
+  res.send("Worker is running...");
 });
 
-// 2. Start the HTTP Server
-// This keeps the Render Web Service "alive"
-app.listen(PORT, () => {
-  logger.info(`🚀 Worker listening on port ${PORT}`);
-  logger.info(`⚙️ BullMQ Worker started: ${courseWorker.name}`);
-});
+// 2. Start the HTTP Server AND Database
+const startWorker = async () => {
+  try {
+    // 👇 CRITICAL: Connect to MongoDB before accepting jobs
+    await connectDB();
+    logger.info("✅ Worker connected to MongoDB");
+
+    app.listen(PORT, () => {
+      logger.info(`🚀 Worker listening on port ${PORT}`);
+      logger.info(`⚙️ BullMQ Worker started: ${courseWorker.name}`);
+    });
+  } catch (error) {
+    logger.error("❌ Failed to start worker:", error);
+    process.exit(1);
+  }
+};
+
+startWorker();
 
 // 3. Graceful Shutdown
 const shutdown = async () => {
