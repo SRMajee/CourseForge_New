@@ -11,8 +11,14 @@ jobs:
   # JOB 1: Integrity Check (Install, Lint, Test)
   # ------------------------------------------------------------------
   test:
-    name: Validate Code
+    name: Validate Backend Code
     runs-on: ubuntu-latest
+    
+    # 👇 THIS IS THE MAGIC LINE that makes it work with the "server/" folder
+    defaults:
+      run:
+        working-directory: ./server
+
     env:
       NODE_ENV: test
       # Connect to the CI MongoDB service (defined in steps below)
@@ -27,7 +33,12 @@ jobs:
       CLOUDINARY_CLOUD_NAME: mock
       CLOUDINARY_API_KEY: mock
       CLOUDINARY_API_SECRET: mock
-
+      # Add Costs so controller credit check works
+      COST_CREATE_COURSE: 50
+      COST_CREATE_COURSE_PRO: 100
+      COST_REGENERATE_COURSE: 25
+      COST_GENERATE_LESSON: 15
+      
     steps:
       - uses: actions/checkout@v4
       
@@ -55,16 +66,13 @@ jobs:
         run: pnpm lint
 
       - name: Run Tests
-        # Runs Jest. Your tests mock Redis, so no Redis service needed here.
+        # Runs Jest inside ./server
         run: pnpm test
 
       - name: Build Project
-        # Verifies that TypeScript compiles correctly
+        # Verifies that TypeScript compiles correctly inside ./server
         run: pnpm build
 
-  # ------------------------------------------------------------------
-  # JOB 2: Deploy to Production (Only on Main Branch)
-  # ------------------------------------------------------------------
   # ------------------------------------------------------------------
   # JOB 2: Deploy to Production (Only on Main Branch)
   # ------------------------------------------------------------------
@@ -74,16 +82,14 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     
-    # 1. Load Secrets into Env Vars (This is allowed)
+    # Load Secrets into Env Vars
     env:
       API_HOOK: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
       WORKER_HOOK: ${{ secrets.RENDER_WORKER_DEPLOY_HOOK }}
       
     steps:
       - name: Deploy API
-        # 2. Check the Env Var (No brackets needed here)
         if: env.API_HOOK != ''
-        # 3. Run the curl command using the Env Var
         run: curl -X POST "$API_HOOK"
       
       - name: Deploy Worker
