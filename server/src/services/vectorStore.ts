@@ -12,7 +12,7 @@ export const getVectorStore = () => {
   const collection = client.db().collection("vectors"); // Ensure this matches your Atlas collection name
 
   return new MongoDBAtlasVectorSearch(new OpenAIEmbeddings(), {
-    collection,
+    collection: collection as any,
     indexName: "vector_index", // Must match the index name you created in Atlas
     textKey: "text",
     embeddingKey: "embedding",

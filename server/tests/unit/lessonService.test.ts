@@ -1,8 +1,24 @@
 import mongoose from "mongoose";
-import { lessonService } from "../../src/services/lessonService";
-import { Lesson } from "../../src/models/Lesson";
-import { creditService } from "../../src/services/creditService";
-import { User } from "../../src/models/User";
+
+// ✅ 1. Mock Env FIRST (Prevents process.exit(1) from Zod validation)
+jest.mock("../../src/config/env", () => ({
+  env: {
+    NODE_ENV: "test",
+    // API Keys
+    OPENAI_API_KEY: "sk-mock",
+    STRIPE_SECRET_KEY: "sk_test_mock",
+    GEMINI_API_KEY: "mock",
+    GROQ_API_KEY: "mock",
+    TAVILY_API_KEY: "mock-key",
+    // Costs
+    COST_CREATE_COURSE: 50,
+    COST_GENERATE_LESSON: 35,
+    COST_GENERATE_AUDIO: 15,
+    COST_EXPORT_PDF: 15,
+  },
+}));
+
+// ✅ 2. Mock Redis (Prevents connection errors)
 jest.mock("../../src/config/redis", () => ({
   redisClient: {
     get: jest.fn(),
@@ -17,7 +33,14 @@ jest.mock("../../src/config/redis", () => ({
     quit: jest.fn(),
   },
 }));
-// Mocks
+
+// ✅ 3. Import Dependencies (After mocks)
+import { lessonService } from "../../src/services/lessonService";
+import { Lesson } from "../../src/models/Lesson";
+import { creditService } from "../../src/services/creditService";
+import { User } from "../../src/models/User";
+
+// ✅ 4. Mock Other Dependencies
 jest.mock("../../src/models/Lesson");
 jest.mock("../../src/models/User");
 jest.mock("../../src/services/creditService");

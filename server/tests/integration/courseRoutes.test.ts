@@ -20,7 +20,7 @@ jest.mock("../../src/config/env", () => ({
     AUTH0_AUDIENCE: "test-audience",
     GEMINI_API_KEY: "mock-key",
     GROQ_API_KEY: "mock-key",
-    // 👇 CRITICAL FIX: Add Costs so controller credit check works
+    TAVILY_API_KEY: "mock-tavily-key",
     COST_CREATE_COURSE: 50,
     COST_CREATE_COURSE_PRO: 100,
     COST_REGENERATE_COURSE: 25,
