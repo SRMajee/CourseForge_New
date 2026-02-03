@@ -29,7 +29,7 @@ export const authController = {
             // Mongoose timestamps handles updated_at automatically
           },
           $setOnInsert: {
-            credits: 100, // Free credits only on FIRST creation
+            credits: 199, // Free credits only on FIRST creation
           },
         },
         { new: true, upsert: true, setDefaultsOnInsert: true },
