@@ -11,9 +11,24 @@ jest.mock("../../src/services/creditService");
 jest.mock("../../src/services/ModelGateway");
 jest.mock("../../src/services/ResearchService");
 jest.mock("../../src/utils/semanticCache", () => ({
-  semanticCache: { getCachedLesson: jest.fn(), setCachedLesson: jest.fn() }
+  semanticCache: { getCachedLesson: jest.fn(), setCachedLesson: jest.fn() },
 }));
-
+// ✅ MOCK REDIS PREVENTING CONNECTION ATTEMPTS
+jest.mock("../../src/config/redis", () => ({
+  redisClient: {
+    get: jest.fn(),
+    set: jest.fn(),
+    setex: jest.fn(),
+    del: jest.fn(),
+    on: jest.fn(),
+    connect: jest.fn(),
+  },
+  // We must also mock the connection used by Queues
+  redisConnection: {
+    on: jest.fn(),
+    quit: jest.fn(),
+  },
+}));
 describe("LessonService Unit Tests", () => {
   const mockLessonId = "lesson_123";
   const mockUserId = "user_123";
@@ -32,11 +47,22 @@ describe("LessonService Unit Tests", () => {
       (Lesson.findById as jest.Mock).mockResolvedValue(mockLesson);
       (Lesson.updateOne as jest.Mock).mockResolvedValue({ modifiedCount: 1 });
 
-      await lessonService.updateCodeBlock(mockLessonId, mockUserId, 0, "new code", "new output");
+      await lessonService.updateCodeBlock(
+        mockLessonId,
+        mockUserId,
+        0,
+        "new code",
+        "new output",
+      );
 
       expect(Lesson.updateOne).toHaveBeenCalledWith(
         { _id: mockLessonId },
-        { $set: { "content.0.code": "new code", "content.0.output": "new output" } }
+        {
+          $set: {
+            "content.0.code": "new code",
+            "content.0.output": "new output",
+          },
+        },
       );
     });
 
@@ -45,7 +71,7 @@ describe("LessonService Unit Tests", () => {
       (Lesson.findById as jest.Mock).mockResolvedValue(mockLesson);
 
       await expect(
-        lessonService.updateCodeBlock(mockLessonId, mockUserId, 5, "code")
+        lessonService.updateCodeBlock(mockLessonId, mockUserId, 5, "code"),
       ).rejects.toThrow("Invalid block index");
     });
   });
@@ -66,7 +92,7 @@ describe("LessonService Unit Tests", () => {
       (creditService.deductCredits as jest.Mock).mockResolvedValue(false);
 
       await expect(lessonService.deductPDFCredits(mockUserId)).rejects.toThrow(
-        "Insufficient credits"
+        "Insufficient credits",
       );
     });
   });
@@ -77,7 +103,10 @@ describe("LessonService Unit Tests", () => {
       const enrichedLesson = { isEnriched: true, content: ["stuff"] };
       (Lesson.findById as jest.Mock).mockResolvedValue(enrichedLesson);
 
-      const result = await lessonService.generateContent(mockLessonId, mockUserId);
+      const result = await lessonService.generateContent(
+        mockLessonId,
+        mockUserId,
+      );
 
       expect(result).toEqual(enrichedLesson);
       expect(creditService.deductCredits).not.toHaveBeenCalled(); // No charge

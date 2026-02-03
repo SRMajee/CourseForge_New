@@ -60,6 +60,8 @@ const envSchema = z.object({
   CREDITS_TOPUP_AMOUNT: z.string().transform(Number).default("300"),
   PRICE_PRO_INR: z.string().transform(Number).default("999"),
   CREDITS_PRO_AMOUNT: z.string().transform(Number).default("1000"),
+  UNSPLASH_ACCESS_KEY: z.string().min(1, "Unsplash Access Key is required"),
+  UNSPLASH_SECRET_KEY: z.string().min(1, "Unsplash Secret Key is required"),
 });
 
 // Validate process.env

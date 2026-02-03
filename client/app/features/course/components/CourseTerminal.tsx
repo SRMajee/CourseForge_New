@@ -89,7 +89,7 @@ export const CourseTerminal = ({ jobId }: CourseTerminalProps) => {
       borderColor="whiteAlpha.200"
       shadow="2xl"
       w="full"
-      position="relative"
+      position="center"
       animation={`${popIn} 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)`}
     >
       {/* Header */}

@@ -1,7 +1,8 @@
 import axios from "axios";
 import logger from "../utils/logger";
+import { env } from "../config/env";
 
-const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
+const UNSPLASH_ACCESS_KEY = env.UNSPLASH_ACCESS_KEY;
 const UNSPLASH_URL = "https://api.unsplash.com/search/photos";
 
 // Fallback images (Gradients/Abstract) to use if API fails

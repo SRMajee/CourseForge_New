@@ -11,10 +11,12 @@ services:
     environment:
       - CI=true
       - NODE_OPTIONS=--max-old-space-size=4096
-      # Explicit overrides to guarantee presence
       - GROQ_API_KEY=mock_groq
       - GEMINI_API_KEY=mock_gemini
       - MONGO_URI=mongodb://mongo:27017/courseforge_test
+      - REDIS_HOST=courseforge_test_redis # 👈 Use the service name, NOT localhost
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://courseforge_test_redis:6379
     command: pnpm exec jest --runInBand --logHeapUsage --detectOpenHandles --forceExit
     volumes:
       - ./src:/app/src

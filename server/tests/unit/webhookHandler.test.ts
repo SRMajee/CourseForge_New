@@ -17,7 +17,20 @@ jest.mock("../../src/config/stripe", () => ({
   CREDIT_PACKS: {},
   SUBSCRIPTION_PLANS: {},
 }));
-
+// Add this with your other mocks
+jest.mock("../../src/config/redis", () => ({
+  redisClient: {
+    get: jest.fn(),
+    set: jest.fn(),
+    setex: jest.fn(),
+    del: jest.fn(),
+    on: jest.fn(),
+    connect: jest.fn(),
+  },
+  redisConnection: {
+    on: jest.fn(),
+  },
+}));
 jest.mock("../../src/config/env", () => ({
   env: { STRIPE_WEBHOOK_SECRET: "whsec_mock" },
 }));

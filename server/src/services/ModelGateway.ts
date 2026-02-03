@@ -7,7 +7,7 @@ import { traceable, getCurrentRunTree } from "langsmith/traceable";
 import { retryWithBackoff } from "../utils/retryHelper";
 
 export enum TaskTier {
-  LOGIC_REASONING = "tier_deepseek", // DeepSeek-V3 (Smartest + Cheap)
+  LOGIC_REASONING = "tier_gpt", // eepSeek-V3 (Smartest + Cheap)
   CREATIVE_WRITING = "tier_llama_70b", // Llama 3.3 70B (Best Prose)
   FAST_UTILITY = "tier_llama_8b", // Llama 3.1 8B (Sub-second speed)
   JSON_REPAIR = "tier_gemini", // Gemini 1.5 Flash (Free Repair)
@@ -51,6 +51,13 @@ export class ModelGateway {
             "llama-3.3-70b-versatile",
             jsonMode,
           );
+          // return this.callChatGPT(
+          //   prompt,
+          //   systemInstruction,
+          //   "gpt-4o",
+          //   jsonMode,
+          // );
+
         // console.log("🧠 [Factory] Routing to DeepSeek-V3...");
         // return this.callDeepSeek(prompt, systemInstruction, jsonMode);
 
@@ -86,7 +93,7 @@ export class ModelGateway {
       console.error(`Error in ModelGateway [${tier}]:`, error);
       // Fallback Strategy
       if (tier === TaskTier.LOGIC_REASONING) {
-        console.warn("⚠️ DeepSeek failed, falling back to Groq...");
+        console.warn("⚠️ CharGpt failed, falling back to Groq...");
         return this.callGroq(
           prompt,
           systemInstruction,
