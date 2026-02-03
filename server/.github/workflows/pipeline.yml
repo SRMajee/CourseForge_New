@@ -65,18 +65,27 @@ jobs:
   # ------------------------------------------------------------------
   # JOB 2: Deploy to Production (Only on Main Branch)
   # ------------------------------------------------------------------
+  # ------------------------------------------------------------------
+  # JOB 2: Deploy to Production (Only on Main Branch)
+  # ------------------------------------------------------------------
   deploy:
     name: Trigger Render Deploy
     needs: test # Only runs if tests pass
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    
+    # 1. Load Secrets into Env Vars (This is allowed)
+    env:
+      API_HOOK: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
+      WORKER_HOOK: ${{ secrets.RENDER_WORKER_DEPLOY_HOOK }}
+      
     steps:
       - name: Deploy API
-        # Only runs if you have added the secret (Phase 4)
-        if: "${{ secrets.RENDER_API_DEPLOY_HOOK != '' }}"
-        run: curl -X POST "${{ secrets.RENDER_API_DEPLOY_HOOK }}"
+        # 2. Check the Env Var (No brackets needed here)
+        if: env.API_HOOK != ''
+        # 3. Run the curl command using the Env Var
+        run: curl -X POST "$API_HOOK"
       
       - name: Deploy Worker
-        # Only runs if you have added the secret (Phase 4)
-        if: "${{ secrets.RENDER_WORKER_DEPLOY_HOOK != '' }}"
-        run: curl -X POST "${{ secrets.RENDER_WORKER_DEPLOY_HOOK }}"
+        if: env.WORKER_HOOK != ''
+        run: curl -X POST "$WORKER_HOOK"
