@@ -1,4 +1,31 @@
 import { Response, NextFunction } from "express";
+
+// ✅ 1. Mock Env FIRST (Prevents process.exit(1) crash)
+jest.mock("../../src/config/env", () => ({
+  env: {
+    NODE_ENV: "test",
+    PORT: 5000,
+    AUTH0_DOMAIN: "test.auth0.com",
+    AUTH0_AUDIENCE: "test-audience",
+    AUTH0_ISSUER_BASE_URL: "https://test.auth0.com",
+  },
+}));
+
+// ✅ 2. Mock Redis (Prevent connection errors just in case)
+jest.mock("../../src/config/redis", () => ({
+  redisClient: {
+    get: jest.fn(),
+    set: jest.fn(),
+    del: jest.fn(),
+    on: jest.fn(),
+    connect: jest.fn(),
+  },
+  redisConnection: {
+    on: jest.fn(),
+  },
+}));
+
+// ✅ 3. Import Dependencies (AFTER Mocks)
 import { checkJwt } from "../../src/middleware/authMiddleware";
 
 // Mock the external library express-oauth2-jwt-bearer
@@ -26,11 +53,6 @@ describe("Middleware: checkJwt", () => {
     next = jest.fn();
   });
 
-  // Note: Since we are mocking the library factory, we test the *behavior* of our wrapper
-  // or simply skip if your checkJwt is a direct export of the library function.
-  // Assuming standard usage, we typically test the integration. 
-  // However, strict unit tests for middlewares often mock the factory.
-  
   it("should define the middleware function", () => {
       expect(typeof checkJwt).toBe("function");
   });
