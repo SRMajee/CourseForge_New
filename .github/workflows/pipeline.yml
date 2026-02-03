@@ -14,10 +14,28 @@ jobs:
     name: Validate Backend Code
     runs-on: ubuntu-latest
     
-    # 👇 THIS IS THE MAGIC LINE that makes it work with the "server/" folder
     defaults:
       run:
         working-directory: ./server
+
+    # 👇 CRITICAL: Override these to work on the CI Host Machine
+    env:
+      NODE_ENV: test
+      # Use 'localhost' instead of 'mongo' because we are not inside docker-compose here
+      MONGO_URI: mongodb://localhost:27017/courseforge_test?replicaSet=rs0
+      # Provide keys for process.env usage
+      OPENAI_API_KEY: sk-mock-key
+      TAVILY_API_KEY: mock-tavily-key
+      GEMINI_API_KEY: mock-gemini-key
+      GROQ_API_KEY: mock-groq-key
+      STRIPE_SECRET_KEY: sk_test_mock
+      STRIPE_WEBHOOK_SECRET: whsec_mock
+      AUTH0_DOMAIN: test.auth0.com
+      AUTH0_AUDIENCE: test-audience
+      COST_CREATE_COURSE: 50
+      COST_CREATE_COURSE_PRO: 100
+      COST_REGENERATE_COURSE: 25
+      COST_GENERATE_LESSON: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -32,14 +50,13 @@ jobs:
         with:
           version: 8
 
-      # 🟢 Start MongoDB with Replica Set (Required for Transactions)
+      # 🟢 Start MongoDB on localhost:27017
       - name: Start MongoDB v6.0
         uses: supercharge/mongodb-github-action@1.10.0
         with:
           mongodb-version: '6.0'
           mongodb-replica-set: rs0
-      - name: Setup Environment
-        run: cp .env.test .env
+
       - name: Install Dependencies
         run: pnpm install --no-frozen-lockfile
 
@@ -47,13 +64,10 @@ jobs:
         run: pnpm lint
 
       - name: Run Tests
-        # Runs Jest inside ./server
         run: pnpm test
 
       - name: Build Project
-        # Verifies that TypeScript compiles correctly inside ./server
         run: pnpm build
-
   # ------------------------------------------------------------------
   # JOB 2: Deploy to Production (Only on Main Branch)
   # ------------------------------------------------------------------
