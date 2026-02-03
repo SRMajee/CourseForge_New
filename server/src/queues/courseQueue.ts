@@ -7,18 +7,38 @@ export interface CourseGenerationJob {
   userId: string;
   topic: string;
   action: "generate_outline" | "generate_lesson";
-
-  // ✅ Phase 8 Updates:
-  userAnswers?: any; // Stores the specific answers (Depth, Stack, Goal)
-  skipClarification?: boolean; // Flag to bypass the ambiguity check in worker
+  userAnswers?: any;
+  skipClarification?: boolean;
   mode?: "standard" | "pro";
-  metadata?: any; // For extra flags like 'pro_mode' later
+  metadata?: any;
 }
 
 export const COURSE_QUEUE_NAME = "course-generation";
 
 export const courseQueue = new Queue<CourseGenerationJob>(COURSE_QUEUE_NAME, {
   connection: redisConnection,
+  defaultJobOptions: {
+    // ⚠️ CRITICAL OPTIMIZATION FOR FREE REDIS ⚠️
+    // Auto-remove jobs from Redis once they are done/failed.
+    // '100' means keep the last 100 jobs for debugging, delete the rest.
+    // '1000' is the count limit.
+    removeOnComplete: {
+      age: 24 * 3600, // Keep for 24 hours
+      count: 100, // Or keep max 100 entries
+    },
+    removeOnFail: {
+      age: 24 * 3600 * 3, // Keep failed jobs longer (3 days) for debugging
+      count: 200,
+    },
+    // Retry logic saves manual restarts
+    attempts: 3,
+    backoff: {
+      type: "exponential",
+      delay: 1000,
+    },
+  },
 });
 
-logger.info(`🚀 Queue initialized: ${COURSE_QUEUE_NAME}`);
+logger.info(
+  `🚀 Queue initialized: ${COURSE_QUEUE_NAME} (Optimized for Serverless)`,
+);

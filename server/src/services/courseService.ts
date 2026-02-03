@@ -16,6 +16,7 @@ import { researchService } from "./ResearchService";
 import { creditService } from "./creditService"; // 👈 Import
 import { redisClient } from "../config/redis";
 import { imageService } from "./imageService";
+import { getVectorStore } from "./vectorStore";
 
 export class ClarificationNeededError extends Error {
   public data: any;
@@ -153,7 +154,24 @@ export class CourseService {
           : topic;
         const webContext =
           await researchService.getTechnicalContext(searchTopic);
-        // B. System Prompt (Refined by Scope)
+
+        let ragContext = "";
+        try {
+          logger.info(`🔍 [RAG] Searching vector store for: "${topic}"`);
+          const vectorStore = getVectorStore();
+          // Search for top 2 most relevant document chunks
+          const results = await vectorStore.similaritySearch(topic, 2);
+
+          if (results.length > 0) {
+            ragContext = results.map((doc) => doc.pageContent).join("\n\n");
+            logger.info(
+              `✅ [RAG] Found ${results.length} docs. Injecting context.`,
+            );
+          }
+        } catch (error) {
+          // ⚠️ Non-blocking: If Vector Search fails, just log it and continue
+          logger.warn("⚠️ [RAG] Vector Search failed or is empty:", error);
+        } // B. System Prompt (Refined by Scope)
         const systemPrompt = `
       You are an expert curriculum designer.
       
@@ -170,7 +188,7 @@ export class CourseService {
       ${scopingContext ? `🔥 CRITICAL USER PREFERENCES:\n${scopingContext}\n(You MUST tailor the content to match these preferences strictly.)\n` : ""}
       
       ${webContext ? `WEB CONTEXT:\n${webContext}\n` : ""}
-      
+      ${ragContext ? `📚 INTERNAL KNOWLEDGE BASE (Prioritize this info):\n${ragContext}\n` : ""}
       Create a detailed course syllabus for: "${topic}".
 
       EXAMPLE OUTPUT FORMAT:

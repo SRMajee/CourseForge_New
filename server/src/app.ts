@@ -5,6 +5,7 @@ import morgan from "morgan";
 import { env } from "./config/env";
 import routes from "./routes/index";
 import { webhookRouter } from "./routes/paymentRoutes";
+import { errorHandler } from "./middleware/validation";
 
 const app: Express = express();
 
@@ -51,8 +52,6 @@ app.get("/health", (req, res) => {
 app.use("/api/v1", routes);
 
 // 7. 404 Handler
-app.use((req, res) => {
-  res.status(404).json({ message: "Route not found" });
-});
+app.use(errorHandler);
 
 export default app;

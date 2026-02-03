@@ -59,4 +59,4 @@ USER expressjs
 EXPOSE 8080
 
 # Start command
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/index.js"]

@@ -1,19 +1,31 @@
-// src/config/redis.ts
-// Create a shared Redis connection config to prevent connection leaks.
-import IORedis from "ioredis";
-import { env } from "./env"; // Assuming you have this
+import IORedis, { RedisOptions } from "ioredis";
+import { env } from "./env";
+
+const redisUrl = env.REDIS_URL || "redis://localhost:6379";
+
+const getRedisConfig = (): RedisOptions => {
+  const isTls = redisUrl.startsWith("rediss://");
+
+  const config: RedisOptions = {
+    maxRetriesPerRequest: null, // Required by BullMQ
+    tls: isTls
+      ? {
+          rejectUnauthorized: false, // Often needed for serverless Redis providers
+        }
+      : undefined,
+  };
+  return config;
+};
 
 // 1. Connection for the Queue (BullMQ needs this)
-export const redisConnection = new IORedis(
-  env.REDIS_URL || "redis://localhost:6379",
-  {
-    maxRetriesPerRequest: null, // Required by BullMQ
-  },
-);
+export const redisConnection = new IORedis(redisUrl, getRedisConfig());
 
 // 2. Connection for Caching/General use
-export const redisClient = new IORedis(
-  env.REDIS_URL || "redis://localhost:6379",
-);
+export const redisClient = new IORedis(redisUrl, getRedisConfig());
 
-console.log("🔥 Redis Connected");
+redisConnection.on("error", (err) =>
+  console.error("Redis Connection Error:", err),
+);
+console.log(
+  `🔥 Redis Connected (${redisUrl.startsWith("rediss://") ? "Secure" : "Insecure"})`,
+);

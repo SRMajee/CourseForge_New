@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write \"src/**/*.{ts,json}\"",
-    "test": "jest"
+    "test": "jest",
+    "worker": "node dist/worker.js"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +21,7 @@
     "@google/generative-ai": "^0.24.1",
     "@langchain/core": "latest",
     "@langchain/google-genai": "latest",
+    "@langchain/mongodb": "^1.1.0",
     "@langchain/openai": "latest",
     "@tavily/core": "^0.7.1",
     "axios": "^1.13.2",
@@ -38,6 +40,7 @@
     "jsonwebtoken": "^9.0.3",
     "langchain": "latest",
     "langsmith": "^0.4.9",
+    "mongodb": "^7.0.0",
     "mongoose": "^8.3.2",
     "morgan": "^1.10.0",
     "openai": "^6.16.0",

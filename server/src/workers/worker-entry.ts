@@ -1,0 +1,27 @@
+import express from 'express';
+import { courseWorker } from './courseWorker'; // Import your existing worker
+import logger from '../utils/logger';
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// 1. Dummy Health Check for Render
+app.get('/', (req, res) => {
+  res.send('Worker is running...');
+});
+
+// 2. Start the HTTP Server (Required to prevent Render from killing the app)
+app.listen(PORT, () => {
+  logger.info(`🚀 Worker listening on port ${PORT}`);
+  logger.info(`⚙️ BullMQ Worker started: ${courseWorker.name}`);
+});
+
+// 3. Graceful Shutdown
+const shutdown = async () => {
+  logger.info('Sigterm received. Closing worker...');
+  await courseWorker.close();
+  process.exit(0);
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

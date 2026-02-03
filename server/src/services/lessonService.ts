@@ -18,6 +18,7 @@ import { retryWithBackoff } from "../utils/retryHelper";
 import { codeExecutionService } from "./CodeExecutionService";
 import { creditService } from "./creditService";
 import { socketService } from "./socketService";
+import { getVectorStore } from "./vectorStore";
 export class LessonService {
   /**
    * ✅ VALIDATION HELPER
@@ -115,13 +116,26 @@ export class LessonService {
       logger.info(`⚡ [Cache Hit] Serving cached content for: ${lesson.title}`);
     } else {
       logger.info(`🐢 [Cache Miss] Generating fresh content...`);
+      let ragContext = "";
+      try {
+        const vectorStore = getVectorStore();
+        // Search using Lesson Title + Course Title for better accuracy
+        const searchQuery = `${lesson.title} ${courseTitle}`;
+        const results = await vectorStore.similaritySearch(searchQuery, 2); // Get top 2 chunks
 
+        if (results.length > 0) {
+          ragContext = results.map((doc) => doc.pageContent).join("\n\n");
+          logger.info(`📚 [RAG] Found context for lesson: "${lesson.title}"`);
+        }
+      } catch (err) {
+        logger.warn("⚠️ [RAG] Vector Search failed:", err);
+      }
       // ---------------------------------------------------------
       // 🧠 AI GENERATION (One-Shot with Strict Structure)
       // ---------------------------------------------------------
       const systemPrompt = `
       You are an interactive course creator.
-      
+      ${ragContext ? `📚 INTERNAL KNOWLEDGE BASE (Use this content primarily):\n${ragContext}\n` : ""}
       STEP 1: CONTENT PLANNING (_thought)
       In the '_thought' field, outline the lesson flow. 
       - Start with a Hook/Objective.

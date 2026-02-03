@@ -129,6 +129,9 @@ export const courseWorker = new Worker<CourseGenerationJob>(
     connection: redisConnection,
     concurrency: 5,
     lockDuration: 60000,
+    // ⚠️ CRITICAL OPTIMIZATION FOR UPSTASH FREE TIER ⚠️
+    // Default is 5 seconds. We increase to 10s to reduce "polling" commands when empty.
+    drainDelay: 10000,
   },
 );
 
