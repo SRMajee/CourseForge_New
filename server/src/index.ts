@@ -4,7 +4,6 @@ import { env } from "./config/env";
 import logger from "./utils/logger";
 import { connectDB } from "./config/db";
 import { socketService } from "./services/socketService";
-import "./workers/courseWorker"; // 👈 Worker starts here (Side-effect)
 
 const startServer = async () => {
   try {
