@@ -15,6 +15,7 @@ app.get("/", (req, res) => {
 
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
+  console.log("📡 [Health Check] Worker is healthy");
 });
 
 // 2. Start the HTTP Server AND Database
