@@ -57,9 +57,14 @@ export class SemanticCache {
       // 2. Cold Start / Redis Expired: Search Mongo
       logger.info(`🐢 [Redis Miss] Searching Mongo for "${topic}"...`);
 
-      let entry = await CacheEntry.findOne({ key });
+      const entry = await CacheEntry.findOne({ key });
 
-      // If exact match missing (only for outlines), try fuzzy text search
+      // 🚨 FIX: DISABLED FUZZY SEARCH
+      // The fuzzy search was causing false positives because the cache key contains
+      // common words like "standard" (e.g. "ML-standard" matched "DBMS-standard").
+      // We now rely STRICTLY on normalized key matching to prevent serving wrong courses.
+
+      /*
       if (!entry && type === "outline") {
         const results = await CacheEntry.find(
           { $text: { $search: topic }, type: "outline" },
@@ -73,6 +78,7 @@ export class SemanticCache {
           logger.info(`✅ [Mongo Fuzzy Hit] Found similar: "${entry.topic}"`);
         }
       }
+      */
 
       // 3. If Found in Mongo -> Re-populate Redis (Make it Hot)
       if (entry) {
