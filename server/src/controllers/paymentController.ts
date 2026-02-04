@@ -4,6 +4,7 @@ import { env } from "../config/env";
 import { User } from "../models/User";
 import { creditService } from "../services/creditService";
 import logger from "../utils/logger";
+import { redisClient } from "../config/redis";
 
 // ✅ NEW HELPER FUNCTION: upgradeUserPlan
 export const upgradeUserPlan = async (
@@ -40,7 +41,7 @@ export const upgradeUserPlan = async (
       planType: "PRO",
       currentPeriodEnd: periodEnd,
     });
-
+    await redisClient.del(`user:${userId}:context`);
     logger.info(`✅ User ${userId} upgraded to PRO (Credits Rolled Over)`);
   } catch (error) {
     logger.error(`❌ Upgrade Failed for User ${userId}:`, error);
@@ -54,9 +55,7 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
     // @ts-ignore
     const userId = req.user?._id;
     const baseUrl =
-      returnUrl ||
-      process.env.FRONTEND_URL ||
-      `${env.CLIENT_URL}/dashboard`;
+      returnUrl || process.env.FRONTEND_URL || `${env.CLIENT_URL}/dashboard`;
     let priceId, mode, metadata;
 
     if (packId) {

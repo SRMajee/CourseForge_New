@@ -26,7 +26,7 @@ const format = winston.format.combine(
 );
 
 const logger = winston.createLogger({
-  level: env.NODE_ENV === 'development' ? 'debug' : 'info',
+  level: env.NODE_ENV === 'development' ? 'error' : 'error',
   levels,
   format,
   transports: [

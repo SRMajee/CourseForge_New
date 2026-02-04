@@ -12,6 +12,7 @@ import { codeExecutionService } from "../services/CodeExecutionService";
 import { CREDIT_COSTS } from "../config/credits"; // 👈 Add this
 import { Course } from "../models/Course";
 import { Module } from "../models/Module";
+import { creditService } from "../services/creditService";
 /**
  * POST /api/v1/courses/outline
  * NOW ASYNCHRONOUS via Redis
@@ -33,9 +34,10 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
     }
 
     // 1. Fetch User to determine Status & Trial Eligibility
-    const user = await User.findById(userId).select(
-      "planType subscriptionStatus hasUsedProTrial credits",
-    );
+    // const user = await User.findById(userId).select(
+    //   "planType subscriptionStatus hasUsedProTrial credits",
+    // );
+    const user = await creditService.getUserContext(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const isPro =
@@ -107,7 +109,7 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
       action: "generate_outline",
       userAnswers: userAnswers || null,
       skipClarification: true,
-      mode: requestedMode, // 👈 Pass to Worker
+      mode: requestedMode,
     });
 
     return res.status(202).json({

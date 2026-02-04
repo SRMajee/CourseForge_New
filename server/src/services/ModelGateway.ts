@@ -293,7 +293,7 @@ export class ModelGateway {
           const validation = schema.safeParse(parsedJson);
 
           if (validation.success) {
-            console.log("✅ [Validation] Success!");
+            // console.log("✅ [Validation] Success!");
             return validation.data;
           }
 

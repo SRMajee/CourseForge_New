@@ -67,7 +67,8 @@ export class CourseService {
     topic: string,
     options: GenerateOptions = {},
   ) {
-    const user = await User.findById(userId);
+    // const user = await User.findById(userId);
+    const user = await creditService.getUserContext(userId);
     if (!user) throw new Error("User not found");
 
     const requestedMode = options.mode || "standard";
@@ -121,6 +122,7 @@ export class CourseService {
         { _id: userId, hasUsedProTrial: false },
         { $set: { hasUsedProTrial: true } },
       );
+      await redisClient.del(`user:${userId}:context`);
       if (!updated) {
         throw new Error("Pro trial already used.");
       }
@@ -138,43 +140,42 @@ export class CourseService {
     try {
       // 5. Run AI Generation (If not cached)
       if (!syllabusData) {
-        // Context Injection
-        let scopingContext = "";
-        if (
-          options.userAnswers &&
-          Object.keys(options.userAnswers).length > 0
-        ) {
-          scopingContext = Object.entries(options.userAnswers)
-            .map(([k, v]) => `Question: ${k} -> Answer: ${v}`)
-            .join("\n");
-          logger.info(`🎯 [Scoping] Applied User Context:\n${scopingContext}`);
-        }
+        let thumbnailUrl =
+          "https://images.unsplash.com/photo-1557682250-33bd709cbe85";
+        // Run AI & Image Fetching simultaneously
+        const [generatedSyllabus, fetchedImage] = await Promise.all([
+          // Task A: AI Generation (The Heavy Lift)
+          (async () => {
+            // A1. Context Injection
+            let scopingContext = "";
+            if (
+              options.userAnswers &&
+              Object.keys(options.userAnswers).length > 0
+            ) {
+              scopingContext = Object.entries(options.userAnswers)
+                .map(([k, v]) => `Question: ${k} -> Answer: ${v}`)
+                .join("\n");
+            }
 
-        // Research
-        const searchTopic = scopingContext
-          ? `${topic} with context: ${scopingContext}`
-          : topic;
-        const webContext =
-          await researchService.getTechnicalContext(searchTopic);
+            // A2. Research (Parallelizable sub-task, but kept linear for context flow)
+            const searchTopic = scopingContext
+              ? `${topic} with context: ${scopingContext}`
+              : topic;
+            const webContext =
+              await researchService.getTechnicalContext(searchTopic);
 
-        let ragContext = "";
-        try {
-          logger.info(`🔍 [RAG] Searching vector store for: "${topic}"`);
-          const vectorStore = getVectorStore();
-          // Search for top 2 most relevant document chunks
-          const results = await vectorStore.similaritySearch(topic, 2);
-
-          if (results.length > 0) {
-            ragContext = results.map((doc) => doc.pageContent).join("\n\n");
-            logger.info(
-              `✅ [RAG] Found ${results.length} docs. Injecting context.`,
-            );
-          }
-        } catch (error) {
-          // ⚠️ Non-blocking: If Vector Search fails, just log it and continue
-          logger.warn("⚠️ [RAG] Vector Search failed or is empty:", error);
-        } // B. System Prompt (Refined by Scope)
-        const systemPrompt = `
+            // A3. RAG Search
+            let ragContext = "";
+            try {
+              const vectorStore = getVectorStore();
+              const results = await vectorStore.similaritySearch(topic, 2);
+              if (results.length > 0) {
+                ragContext = results.map((doc) => doc.pageContent).join("\n\n");
+              }
+            } catch (error) {
+              logger.warn("⚠️ [RAG] Skipped:", error);
+            }
+            const systemPrompt = `
       You are an expert curriculum designer.
       
       STEP 1: THOUGHT PROCESS (_thought)
@@ -205,39 +206,48 @@ export class CourseService {
       }
     `;
 
-        syllabusData = await modelGateway.generateStructured(
-          systemPrompt,
-          outlineSchema,
-          planningTier,
-        );
+            const result = await modelGateway.generateStructured(
+              systemPrompt,
+              outlineSchema,
+              planningTier,
+            );
 
-        // Save to Cache (Fire & Forget)
-        semanticCache
-          .setCachedOutline(cacheKey, syllabusData)
-          .catch((e) => logger.error("Cache Write Error", e));
-      }
-      // 7. Parallel Task: Fetch Thumbnail
-      // ✅ FIX: Robust error handling for image fetching
-      let thumbnailUrl =
-        "https://images.unsplash.com/photo-1557682250-33bd709cbe85"; // Hard default
-      try {
-        const fetchedUrl = await imageService.getCourseThumbnail(topic);
-        if (fetchedUrl) thumbnailUrl = fetchedUrl;
-      } catch (imgError) {
-        logger.error(
-          "⚠️ Image Service Critical Fail (Using Hard Default):",
-          imgError,
+            // Fire-and-Forget Cache Write
+            semanticCache
+              .setCachedOutline(cacheKey, result)
+              .catch((e) => logger.error("Cache Write Fail", e));
+
+            return result;
+          })(),
+
+          // Task B: Image Fetching (Runs while AI is thinking)
+          (async () => {
+            try {
+              const url = await imageService.getCourseThumbnail(topic);
+              return url || thumbnailUrl;
+            } catch (e) {
+              return thumbnailUrl; // Fail silently to default
+            }
+          })(),
+        ]);
+        syllabusData = generatedSyllabus;
+        thumbnailUrl = fetchedImage;
+        // 6. Save to DB (Pure Persistence)
+        const course = await this.saveCourseToDb(
+          userId,
+          syllabusData,
+          thumbnailUrl,
+          requestedMode,
         );
-        // Continue execution - do not throw
+        return course;
       }
-      // 6. Save to DB (Pure Persistence)
-      const course = await this.saveCourseToDb(
+      const url = await imageService.getCourseThumbnail(topic);
+      return await this.saveCourseToDb(
         userId,
         syllabusData,
-        thumbnailUrl,
+        url, // Or fetch image if needed
         requestedMode,
       );
-      return course;
     } catch (error) {
       // 🚨 FAILURE: REFUND CREDITS
       logger.error("❌ Generation Failed. Refunding user...", error);

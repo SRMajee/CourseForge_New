@@ -2,7 +2,7 @@ docker-compose -f docker-compose.dev.yml up -d --build
 docker-compose -f docker-compose.dev.yml up -d
 docker-compose -f docker-compose.dev.yml config --services
 docker-compose -f docker-compose.dev.yml logs -f api
-
+mongodb://localhost:27017/courseforge?directConnection=true
 stripe login
 stripe listen --forward-to localhost:8080/api/v1/payment/webhook
 

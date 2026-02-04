@@ -1,47 +1,67 @@
 import { Response, NextFunction } from "express";
 import { User } from "../models/User";
+import { redisClient } from "../config/redis"; // Ensure this matches your redis config path
+import logger from "../utils/logger";
+
 declare global {
   namespace Express {
     interface Request {
-      user?: any; // Or your User interface
+      user?: any;
     }
   }
 }
+
 export const attachUser = async (
   req: any,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    // console.log("🔍 AttachUser: Middleware Started");
-
-    // 1. Check if Auth0 Token exists
+    // 1. Validation (Fast CPU check)
     if (!req.auth || !req.auth.payload) {
-      console.error(
-        "❌ AttachUser: No Auth0 Token found (req.auth is missing)",
-      );
       return res.status(401).json({ message: "Authentication required" });
     }
 
     const auth0Id = req.auth.payload.sub;
-    // console.log("🔍 AttachUser: Auth0 ID found:", auth0Id);
+    const cacheKey = `auth_session:${auth0Id}`;
 
-    // 2. Find User in DB
-    const user = await User.findOne({ auth0Id });
+    // -------------------------------------------------------
+    // 🚀 OPTIMIZATION: Check Redis Cache First (~2ms)
+    // -------------------------------------------------------
+    const cachedUser = await redisClient.get(cacheKey);
+
+    if (cachedUser) {
+      // ✅ HIT: Skip MongoDB entirely
+      req.user = JSON.parse(cachedUser);
+      return next();
+    }
+
+    // -------------------------------------------------------
+    // 🐢 SLOW PATH: Fetch from Mongo (Only on Cache Miss)
+    // -------------------------------------------------------
+    // We select only necessary fields to keep the object light
+    const user = await User.findOne({ auth0Id }).select("_id email auth0Id");
 
     if (!user) {
-      console.error(
-        "❌ AttachUser: User not found in MongoDB for this Auth0 ID",
-      );
+      logger.warn(`❌ User not found for Auth0 ID: ${auth0Id}`);
       return res.status(401).json({ message: "User not synced" });
     }
 
-    // 3. Success
-    // console.log("✅ AttachUser: User found:", user.email);
-    req.user = user;
+    // Convert Mongoose Doc to Plain Object
+    // const sessionUser = user.toObject();
+    const sessionUser = {
+      _id: user._id.toString(),
+      email: user.email,
+      auth0Id: user.auth0Id,
+    };
+
+    // 💾 SAVE TO CACHE (Expires in 1 hour)
+    // This ensures subsequent requests use the Fast Path
+    await redisClient.setex(cacheKey, 86400, JSON.stringify(sessionUser));
+    req.user = sessionUser;
     next();
   } catch (error) {
-    console.error("💥 AttachUser: Internal Error", error);
+    logger.error("💥 AttachUser Middleware Error", error);
     res.status(500).json({ message: "Server Error" });
   }
 };

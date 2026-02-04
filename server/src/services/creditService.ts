@@ -23,7 +23,42 @@ export const creditService = {
     await redisClient.set(key, balance);
     return balance;
   },
+  /**
+   * 🚀 FAST CONTEXT: Get Plan & Credits from Redis (No Mongo)
+   * Caches user plan details for 1 hour to speed up Controller checks.
+   */
+  getUserContext: async (userId: string) => {
+    const key = `user:${userId}:context`;
 
+    // 1. Parallel Fetch: Get Real-time Credits + Cached Plan Metadata
+    const [balance, cachedMeta] = await Promise.all([
+      creditService.getBalance(userId), // Already efficient
+      redisClient.get(key),
+    ]);
+
+    if (cachedMeta) {
+      return { credits: balance, ...JSON.parse(cachedMeta) };
+    }
+
+    // 2. Cache Miss: Fetch from DB (Only happens once per hour/login)
+    const user = await User.findById(userId).select(
+      "planType subscriptionStatus hasUsedProTrial",
+    );
+
+    if (!user) return null;
+
+    const meta = {
+      planType: user.planType,
+      subscriptionStatus: user.subscriptionStatus,
+      hasUsedProTrial: user.hasUsedProTrial,
+      isPro: user.planType === "PRO" || user.subscriptionStatus === "active",
+    };
+
+    // 3. Cache Metadata (Expire in 1 hour to handle plan upgrades)
+    await redisClient.setex(key, 3600, JSON.stringify(meta));
+
+    return { credits: balance, ...meta };
+  },
   /**
    * Atomic Check & Deduct (The "Credit Lock")
    * Returns TRUE if successful, FALSE if insufficient funds.

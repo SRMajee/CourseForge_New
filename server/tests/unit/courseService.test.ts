@@ -115,6 +115,16 @@ describe("CourseService Logic", () => {
 
   describe("generateCourse (Logic)", () => {
     it("should parse AI JSON and save full structure to DB", async () => {
+      // ✅ FIX: Mock the new creditService method
+      // This is what the updated generateCourse calls instead of User.findById
+      (creditService.getUserContext as jest.Mock).mockResolvedValue({
+        credits: 100,
+        planType: "free",
+        subscriptionStatus: "active",
+        hasUsedProTrial: false,
+        isPro: false,
+      });
+
       (creditService.deductCredits as jest.Mock).mockResolvedValue(true);
       (modelGateway.generateStructured as jest.Mock).mockResolvedValue({
         title: "AI Course",
@@ -144,7 +154,7 @@ describe("CourseService Logic", () => {
       // 1. Mock Redis returning low balance
       (creditService.getBalance as jest.Mock).mockResolvedValue(10);
 
-      // 2. ✅ FIX: Update DB User to ALSO have low credits (prevents drift healing)
+      // 2. Update DB User to ALSO have low credits (prevents drift healing)
       await User.findByIdAndUpdate(userId, { credits: 10 });
 
       // 3. Mock Redis set (just in case)

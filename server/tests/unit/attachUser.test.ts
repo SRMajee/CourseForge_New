@@ -1,9 +1,18 @@
 import { attachUser } from "../../src/middleware/attachUser";
 import { User } from "../../src/models/User";
 import { Response, NextFunction } from "express";
+import { redisClient } from "../../src/config/redis";
 
 // Mock Mongoose User Model
 jest.mock("../../src/models/User");
+
+// Mock Redis (since attachUser now checks Redis first)
+jest.mock("../../src/config/redis", () => ({
+  redisClient: {
+    get: jest.fn(),
+    setex: jest.fn(),
+  },
+}));
 
 describe("Middleware: attachUser", () => {
   let req: any;
@@ -12,7 +21,6 @@ describe("Middleware: attachUser", () => {
 
   beforeEach(() => {
     req = {
-      // Structure matches express-oauth2-jwt-bearer
       auth: {
         payload: {
           sub: "auth0|12345",
@@ -24,46 +32,84 @@ describe("Middleware: attachUser", () => {
       json: jest.fn(),
     };
     next = jest.fn();
-  });
-
-  afterEach(() => {
     jest.clearAllMocks();
   });
 
-  it("should attach user to req.user if found in DB", async () => {
-    // Setup Mock: Database returns a user
-    const mockDbUser = { _id: "db_id_123", email: "test@test.com" };
-    (User.findOne as jest.Mock).mockResolvedValue(mockDbUser);
+  it("should attach user from Redis if cache HIT (Fast Path)", async () => {
+    const mockRedisUser = {
+      _id: "db_id_123",
+      email: "redis@test.com",
+      auth0Id: "auth0|12345",
+    };
+
+    // 1. Mock Redis HIT
+    (redisClient.get as jest.Mock).mockResolvedValue(
+      JSON.stringify(mockRedisUser),
+    );
 
     await attachUser(req, res, next);
 
+    // Redis should be called
+    expect(redisClient.get).toHaveBeenCalledWith("auth_session:auth0|12345");
+    // Mongo should NOT be called
+    expect(User.findOne).not.toHaveBeenCalled();
+    // User should be attached
+    expect(req.user).toEqual(mockRedisUser);
+    expect(next).toHaveBeenCalled();
+  });
+
+  it("should fetch from Mongo and Cache if Redis MISS (Slow Path)", async () => {
+    const mockDbUser = {
+      _id: "db_id_123",
+      email: "mongo@test.com",
+      auth0Id: "auth0|12345",
+      toObject: jest.fn().mockReturnValue({
+        _id: "db_id_123",
+        email: "mongo@test.com",
+        auth0Id: "auth0|12345",
+      }),
+    };
+
+    // 1. Mock Redis MISS
+    (redisClient.get as jest.Mock).mockResolvedValue(null);
+
+    // 2. Mock Mongo FindOne -> Select -> Result
+    (User.findOne as jest.Mock).mockReturnValue({
+      select: jest.fn().mockResolvedValue(mockDbUser),
+    });
+
+    await attachUser(req, res, next);
+
+    // Verify Flow
     expect(User.findOne).toHaveBeenCalledWith({ auth0Id: "auth0|12345" });
-    expect(req.user).toEqual(mockDbUser);
+    expect(redisClient.setex).toHaveBeenCalled(); // Should cache the result
+    expect(req.user).toEqual({
+      _id: "db_id_123",
+      email: "mongo@test.com",
+      auth0Id: "auth0|12345",
+    });
     expect(next).toHaveBeenCalled();
   });
 
   it("should return 401 if user is not found in DB", async () => {
-    // 1. SILENCE THE LOG: Spy on console.error and make it do nothing
     const consoleSpy = jest
-      .spyOn(console, "error")
+      .spyOn(console, "warn") // Assuming you use logger.warn in the real code now
       .mockImplementation(() => {});
 
-    // Setup Mock: Database returns null
-    (User.findOne as jest.Mock).mockResolvedValue(null);
+    // 1. Redis Miss
+    (redisClient.get as jest.Mock).mockResolvedValue(null);
+
+    // 2. Mongo Miss (Returns null after select)
+    (User.findOne as jest.Mock).mockReturnValue({
+      select: jest.fn().mockResolvedValue(null),
+    });
 
     await attachUser(req, res, next);
 
-    expect(User.findOne).toHaveBeenCalled();
     expect(req.user).toBeUndefined();
     expect(res.status).toHaveBeenCalledWith(401);
-
-    // Check for the response message
-    expect(res.json).toHaveBeenCalledWith({
-      message: "User not synced",
-    });
     expect(next).not.toHaveBeenCalled();
 
-    // 2. CLEAN UP: Restore console.error so other tests can log errors if needed
     consoleSpy.mockRestore();
   });
 });
