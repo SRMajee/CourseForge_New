@@ -1,32 +1,35 @@
 import { Server } from "socket.io";
 
-// ✅ 1. Mock Env FIRST (Prevents process.exit(1) crash)
+// ✅ 1. Mock Env FIRST
 jest.mock("../../src/config/env", () => ({
   env: {
     NODE_ENV: "test",
     PORT: 5000,
+    REDIS_URL: "redis://localhost:6379",
   },
 }));
 
-// ✅ 2. Mock Redis (Prevents potential connection errors if service imports it)
-jest.mock("../../src/config/redis", () => ({
-  redisClient: {
-    get: jest.fn(),
-    set: jest.fn(),
-    del: jest.fn(),
+// ✅ 2. Mock Redis Package (Crucial for the new async init)
+jest.mock("redis", () => ({
+  createClient: jest.fn(() => ({
+    connect: jest.fn().mockResolvedValue(undefined),
+    duplicate: jest.fn(() => ({
+      connect: jest.fn().mockResolvedValue(undefined),
+    })),
     on: jest.fn(),
-    connect: jest.fn(),
-  },
-  redisConnection: {
-    on: jest.fn(),
-  },
+  })),
 }));
 
-// ✅ 3. Mock Logger & Socket.io
+// ✅ 3. Mock Redis Adapter
+jest.mock("@socket.io/redis-adapter", () => ({
+  createAdapter: jest.fn(),
+}));
+
+// ✅ 4. Mock Logger & Socket.io
 jest.mock("../../src/utils/logger");
 jest.mock("socket.io");
 
-// ✅ 4. Import Dependencies
+// ✅ 5. Import Dependencies
 import { socketService } from "../../src/services/socketService";
 import logger from "../../src/utils/logger";
 
@@ -34,7 +37,7 @@ describe("SocketService Unit", () => {
   let mockIo: any;
 
   beforeEach(() => {
-    // Reset the singleton state (simulating fresh start)
+    // Reset singleton state
     (socketService as any).io = null;
     jest.clearAllMocks();
 
@@ -47,9 +50,10 @@ describe("SocketService Unit", () => {
     (Server as unknown as jest.Mock).mockReturnValue(mockIo);
   });
 
-  it("should emit to specific user room if initialized", () => {
-    // 1. Initialize
-    socketService.init({} as any);
+  // 👇 FIX: Make this test async
+  it("should emit to specific user room if initialized", async () => {
+    // 1. Initialize (Wait for Redis connection mock)
+    await socketService.init({} as any);
 
     // 2. Emit
     socketService.emitToUser("user_123", "test_event", { data: 1 });
