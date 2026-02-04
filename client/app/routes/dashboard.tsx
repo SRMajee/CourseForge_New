@@ -27,6 +27,7 @@ import {
   FaGlobe,
   FaBrain,
 } from "react-icons/fa";
+import { useSocketStore } from "~/store/socketStore";
 
 export function meta({}: Route.MetaArgs) {
   return [{ title: "Studio | CourseForge" }];
@@ -36,7 +37,7 @@ export default function Dashboard() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const { mutate, isPending } = useCreateCourse();
-
+  const { connect, disconnect } = useSocketStore();
   const [viewState, setViewState] = useState<
     "idle" | "clarifying" | "generating"
   >("idle");
@@ -45,7 +46,13 @@ export default function Dashboard() {
 
   // ✅ Lifted Mode State
   const [mode, setMode] = useState<"standard" | "pro">("standard");
-
+  useEffect(() => {
+    if (user?._id) {
+      connect(user._id);
+    }
+    // Cleanup on unmount (optional, keeps connection alive for nav)
+    // return () => disconnect();
+  }, [user, connect]);
   // Auto-set mode based on user preference or plan
   useEffect(() => {
     if (user?.planType === "PRO" || user?.subscriptionStatus === "active") {
