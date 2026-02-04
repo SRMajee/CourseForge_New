@@ -98,7 +98,7 @@ const ModuleOutlineSchema = z.object({
   title: z.string().describe("The title of the module"),
   lessons: z
     .array(LessonOutlineSchema)
-    .min(3)
+    .min(2)
     .describe("List of lessons in this module"),
 });
 
@@ -113,8 +113,8 @@ export const outlineSchema = z.object({
   tags: z.array(z.string()).describe("2-5 relevant topic tags"),
   modules: z
     .array(ModuleOutlineSchema)
-    .min(6)
-    .describe("A list of 3-6 modules"),
+    .min(4)
+    .describe("A list of 3-5 modules"),
 });
 
 export type CourseOutline = z.infer<typeof outlineSchema>;
