@@ -63,10 +63,17 @@ export const CourseTerminal = ({ jobId }: CourseTerminalProps) => {
         }, 800);
       }
     };
-
+    const handleError = (data: any) => {
+      if (data.jobId === jobId) {
+        isCompletedRef.current = true;
+        setLogs((prev) => [...prev, `❌ ERROR: ${data.message}`]);
+        setStatus("failed");
+        setProgress(100);
+      }
+    };
     socket.on("job_progress", handleProgress);
     socket.on("job_complete", handleComplete);
-
+    socket.on("course_generation_error", handleError);
     return () => {
       socket.off("job_progress", handleProgress);
       socket.off("job_complete", handleComplete);

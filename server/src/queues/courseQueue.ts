@@ -6,7 +6,7 @@ import logger from "../utils/logger";
 export interface CourseGenerationJob {
   userId: string;
   topic: string;
-  action: "generate_outline" | "generate_lesson";
+  action: "generate_outline" | "generate_lesson" | "resume_course";
   userAnswers?: any;
   skipClarification?: boolean;
   mode?: "standard" | "pro";

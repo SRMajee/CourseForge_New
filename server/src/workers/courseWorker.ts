@@ -12,87 +12,97 @@ export const courseWorker = new Worker<CourseGenerationJob>(
     const { userId, topic, action, userAnswers, mode } = job.data;
     let heartbeat: NodeJS.Timeout | null = null;
 
+    // 1. Broadcast Setup
+    const user = await User.findById(userId);
+    const rooms = [userId];
+    if (user?.auth0Id) rooms.push(user.auth0Id);
+    if (user?.email) rooms.push(user.email);
+
+    const broadcast = (event: string, data: any) => {
+      rooms.forEach((room) => socketService.emitToUser(room, event, data));
+    };
+
     try {
       logger.info(
-        `⚙️ [Worker] Job ${job.id} started for ${userId} | Mode: ${mode || "standard"}`,
+        `⚙️ [Worker] Job ${job.id} started for ${userId} | Mode: ${mode || "standard"} | Action: ${action}`,
       );
-      // 1. Broadcast Setup
-      const user = await User.findById(userId);
-      const rooms = [userId];
-      if (user?.auth0Id) rooms.push(user.auth0Id);
-      if (user?.email) rooms.push(user.email);
-
-      const broadcast = (event: string, data: any) => {
-        rooms.forEach((room) => socketService.emitToUser(room, event, data));
-      };
 
       // 2. Notify Started
       broadcast("course_generation_started", {
         jobId: job.id,
-        message: `Analyzing topic: "${topic}"...`,
+        message: `Initializing Agentic Workflow (${mode})...`,
       });
 
-      // ✅ UX UPGRADE: Dynamic "Real" Feedback Loop
-      // Extract user choices to show them back in the UI
-      const answerValues = userAnswers
-        ? Object.values(userAnswers).filter(
-            (a) => typeof a === "string" && a.length > 1 && !a.includes("Skip"),
-          )
-        : [];
-
+      // 3. Heartbeat (UX Feedback & Keep-Alive)
       const baseMessages = [
         "Analyzing curriculum standards...",
         "Structuring course modules...",
         "Drafting lesson plans...",
         "Validating technical accuracy...",
+        "Refining pro-level insights...",
       ];
 
       let tick = 0;
       let progress = 5;
 
-      heartbeat = setInterval(() => {
-        // Non-linear progress (Fast start, slows near the end)
+      heartbeat = setInterval(async () => {
         const increment = progress < 60 ? 10 : progress < 85 ? 5 : 1;
         progress = Math.min(progress + increment, 95);
 
-        // Logic: Cycle between "System Action" and "User Context"
-        let currentMessage = baseMessages[tick % baseMessages.length];
+        const msgIndex = tick % baseMessages.length;
 
-        // Every 2nd tick, show a specific user choice to make it feel "tailored"
-        if (answerValues.length > 0 && tick % 2 !== 0) {
-          const answerIndex = Math.floor(tick / 2) % answerValues.length;
-          currentMessage = `Tailoring content for: "${answerValues[answerIndex]}"...`;
-        }
-
+        // A. Notify Frontend
         broadcast("job_progress", {
           jobId: job.id,
           status: "processing",
-          message: currentMessage,
+          message: baseMessages[msgIndex],
           progress: Math.floor(progress),
         });
 
-        tick++;
-      }, 1500); // Update every 1.5s
+        // B. ✅ FIX: Notify Redis/BullMQ that we are alive
+        // This prevents the job from being marked as "stalled" during long Pro generations
+        try {
+          await job.updateProgress(progress);
+        } catch (e) {
+          // Ignore updates if job finished
+        }
 
-      // 3. Execute Service
-      let result;
-      if (action === "generate_outline") {
-        // ✅ UPDATE: Pass 'mode' to the service
-        result = await courseService.generateCourse(userId, topic, {
-          userAnswers,
-          mode,
-        });
-      }
+        tick++;
+      }, 2000); // Slower tick (2s) to reduce socket noise
+
+      // 4. Execute Logic with Timeout Race
+      // ✅ FIX: Force timeout after 180s (3 mins) to prevent infinite hangs
+      const PRO_TIMEOUT = 180000;
+
+      const generationPromise = (async () => {
+        if (action === "generate_outline" || action === "resume_course") {
+          return await courseService.generateCourse(userId, topic, {
+            userAnswers,
+            mode,
+          });
+        }
+        throw new Error(`Unknown action: ${action}`);
+      })();
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error("AI Generation Timed Out")),
+          PRO_TIMEOUT,
+        ),
+      );
+
+      // Race the generation against the clock
+      const result: any = await Promise.race([
+        generationPromise,
+        timeoutPromise,
+      ]);
 
       // Stop Heartbeat
       if (heartbeat) clearInterval(heartbeat);
 
-      // 4. Notify Completion
+      // 5. Handle Success
       if (result) {
-        logger.info(
-          `✅ [Worker] Job ${job.id} DONE. Broadcasting to: ${rooms.join(", ")}`,
-        );
-
+        logger.info(`✅ [Worker] Job ${job.id} DONE. Result ID: ${result._id}`);
         const payload = {
           jobId: job.id,
           courseId: result._id,
@@ -100,26 +110,20 @@ export const courseWorker = new Worker<CourseGenerationJob>(
           message: "Course generated successfully!",
           result: result,
         };
-
         broadcast("course_generated", payload);
         broadcast("job_complete", payload);
+      } else {
+        throw new Error("Job finished with no result");
       }
 
       return result;
     } catch (error: any) {
       if (heartbeat) clearInterval(heartbeat);
-      logger.error(`❌ [Worker] Job ${job.id} Failed:`, error);
+      logger.error(`❌ [Worker] Job ${job.id} CRASHED:`, error);
 
-      const user = await User.findById(userId);
-      const rooms = [userId];
-      if (user?.auth0Id) rooms.push(user.auth0Id);
-      if (user?.email) rooms.push(user.email);
-
-      rooms.forEach((room) => {
-        socketService.emitToUser(room, "course_generation_error", {
-          jobId: job.id,
-          message: error.message || "Failed to generate course.",
-        });
+      broadcast("course_generation_error", {
+        jobId: job.id,
+        message: error.message || "Deep reasoning process failed.",
       });
 
       throw error;
@@ -128,16 +132,9 @@ export const courseWorker = new Worker<CourseGenerationJob>(
   {
     connection: redisConnection,
     concurrency: 5,
-    lockDuration: 60000,
-    // ⚠️ CRITICAL OPTIMIZATION FOR UPSTASH FREE TIER ⚠️
-    // Default is 5 seconds. We increase to 10s to reduce "polling" commands when empty.
-    drainDelay: 10000,
+    // ✅ FIX: Increase Lock Duration to 5 minutes (300s)
+    // Pro jobs take time. 60s is too short for DeepSeek/GPT-4 logic tiers.
+    lockDuration: 300000,
+    drainDelay: 5000, // Reduced slightly for responsiveness
   },
-);
-
-courseWorker.on("completed", (job) =>
-  logger.info(`Job ${job.id} has completed!`),
-);
-courseWorker.on("failed", (job, err) =>
-  logger.error(`Job ${job?.id} has failed with ${err.message}`),
 );
