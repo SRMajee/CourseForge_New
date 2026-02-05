@@ -228,7 +228,12 @@ export const CourseTerminal = ({ jobId }: CourseTerminalProps) => {
             <Text color="blue.400" fontSize="10px" mt={0.5}>
               {">"}
             </Text>
-            <Text color="gray.300" wordBreak="break-word" lineHeight="short">
+            <Text
+              color="gray.300"
+              wordBreak="normal"
+              overflowWrap="anywhere"
+              lineHeight="short"
+            >
               {log}
             </Text>
           </HStack>

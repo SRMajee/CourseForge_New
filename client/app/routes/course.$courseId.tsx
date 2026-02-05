@@ -323,7 +323,7 @@ export default function CourseDetail() {
             transition="transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1)"
             _groupHover={{ transform: "translateY(-8px)" }}
           >
-            <HStack gap={3} w="full">
+            <Flex gap={3} w="full" wrap="wrap">
               {course.generationMode === "pro" && (
                 <Badge
                   colorPalette="purple"
@@ -366,11 +366,11 @@ export default function CourseDetail() {
                   Viewing Version {currentVersion}
                 </Badge>
               )}
-            </HStack>
+            </Flex>
 
             <Box maxW="4xl">
               <Heading
-                size="5xl"
+                size={{ base: "3xl", md: "5xl" }}
                 fontWeight="900"
                 letterSpacing="tight"
                 lineHeight="1.1"
@@ -381,7 +381,7 @@ export default function CourseDetail() {
                 {course.title}
               </Heading>
               <Text
-                fontSize="lg"
+                fontSize={{ base: "md", md: "lg" }}
                 color="gray.100"
                 lineHeight="relaxed"
                 fontWeight="medium"
@@ -405,33 +405,39 @@ export default function CourseDetail() {
       >
         <Box flex="1">
           {/* HEADER LINE: Modules count + History Dropdown */}
-          <HStack mb={6} justify="space-between" align="center">
-            <HStack gap={4}>
-              <Heading size="lg">Syllabus</Heading>
-              <Text color="fg.muted" fontWeight="medium" fontSize="lg">
-                &bull;
-              </Text>
-              <Text color="fg.muted" fontWeight="medium">
-                {course.modules?.length || 0} Modules
-              </Text>
-              <Text color="fg.muted" fontWeight="medium">
-                &bull;
-              </Text>
-              <Text color="fg.muted" fontWeight="medium">
-                {course.modules?.reduce(
-                  (acc: number, m: any) => acc + (m.lessons?.length || 0),
-                  0,
-                )}{" "}
-                Lessons
-              </Text>
-              <Text color="fg.muted" fontWeight="medium">
-                &bull;
-              </Text>{" "}
-              <Text color="fg.muted" fontWeight="medium">
-                <CoursePDFButton course={course} />
-              </Text>
-            </HStack>
-            <HStack gap={3}>
+          {/* ✅ FIXED: Stack for mobile, Row for desktop */}
+          <Stack
+            direction={{ base: "column", md: "row" }}
+            mb={6}
+            justify="space-between"
+            align={{ base: "start", md: "center" }}
+            gap={4}
+          >
+            {/* Stats Wrapper */}
+            <Flex gap={{ base: 2, md: 4 }} align="center" wrap="wrap">
+              <Heading size="lg" mr={2}>
+                Syllabus
+              </Heading>
+              <Flex gap={2} align="center" wrap="wrap" color="fg.muted" fontWeight="medium">
+                <Text display={{ base: "none", md: "block" }}>&bull;</Text>
+                <Text>{course.modules?.length || 0} Modules</Text>
+                <Text display={{ base: "none", md: "block" }}>&bull;</Text>
+                <Text>
+                  {course.modules?.reduce(
+                    (acc: number, m: any) => acc + (m.lessons?.length || 0),
+                    0,
+                  )}{" "}
+                  Lessons
+                </Text>
+                <Text display={{ base: "none", md: "block" }}>&bull;</Text>
+                <Box>
+                  <CoursePDFButton course={course} />
+                </Box>
+              </Flex>
+            </Flex>
+
+            {/* Buttons Wrapper */}
+            <HStack gap={3} w={{ base: "full", md: "auto" }}>
               {/* ✅ NEW HISTORY DROPDOWN */}
               <Menu.Root>
                 <Menu.Trigger asChild>
@@ -444,11 +450,12 @@ export default function CourseDetail() {
                     _hover={{ bg: "whiteAlpha.100" }}
                     borderWidth="1px"
                     borderColor="whiteAlpha.300"
+                    flex={{ base: 1, md: "initial" }} // Expand button on mobile
                   >
-                    <HStack gap={2}>
+                    <HStack gap={2} justify="center">
                       <Icon as={FaHistory} color="gray.400" />
                       <Text fontWeight="medium">
-                        Version {currentVersion} / {totalVersions}
+                        v{currentVersion}/{totalVersions}
                       </Text>
                       <Icon as={FaChevronDown} size="xs" color="gray.500" />
                     </HStack>
@@ -575,13 +582,13 @@ export default function CourseDetail() {
                 <FaTrash />
               </IconButton>
             </HStack>
-          </HStack>
+          </Stack>
           {/* Module List */}
           <VStack align="stretch" gap={5}>
             {course.modules?.map((module: any, idx: number) => (
               <Box key={module._id}>
                 <HStack mb={3} justify="space-between" className="group">
-                  <HStack gap={3} >
+                  <HStack gap={3}>
                     <Text
                       fontWeight="bold"
                       color="fg.subtle"
