@@ -67,8 +67,8 @@ export class CourseService {
     topic: string,
     options: GenerateOptions = {},
   ) {
-    // const user = await User.findById(userId);
-    const user = await creditService.getUserContext(userId);
+    const user = await User.findById(userId);
+    // const user = await creditService.getUserContext(userId);
     if (!user) throw new Error("User not found");
 
     const requestedMode = options.mode || "standard";

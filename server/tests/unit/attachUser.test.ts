@@ -4,6 +4,13 @@ import { Response, NextFunction } from "express";
 import { redisClient } from "../../src/config/redis";
 
 // Mock Mongoose User Model
+jest.mock("../../src/config/env", () => ({
+  env: {
+    NODE_ENV: "test",
+    REDIS_HOST: "localhost",
+    REDIS_PORT: 6379,
+  },
+}));
 jest.mock("../../src/models/User");
 
 // Mock Redis (since attachUser now checks Redis first)

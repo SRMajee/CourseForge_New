@@ -10,7 +10,8 @@ jest.mock("../../src/config/env", () => ({
   env: {
     NODE_ENV: "test",
     PORT: 5000,
-    MONGO_URI: process.env.MONGO_URI || "mongodb://mongo:27017/courseforge_test",
+    MONGO_URI:
+      process.env.MONGO_URI || "mongodb://mongo:27017/courseforge_test",
     YOUTUBE_API_KEY: "mock-yt-key",
     OPENAI_API_KEY: "mock-openai-key",
     GEMINI_API_KEY: "mock-gemini-key",
@@ -42,14 +43,18 @@ jest.mock("../../src/services/youtubeService", () => ({
 jest.mock("../../src/services/languageService", () => ({
   languageService: {
     generateScript: jest.fn().mockResolvedValue("Mock Audio Script"),
-    generateAudio: jest.fn().mockResolvedValue(Buffer.from("Mock Audio Buffer")),
-    uploadAudioToCloudinary: jest.fn().mockResolvedValue("https://res.cloudinary.com/mock-url.mp3"),
+    generateAudio: jest
+      .fn()
+      .mockResolvedValue(Buffer.from("Mock Audio Buffer")),
+    uploadAudioToCloudinary: jest
+      .fn()
+      .mockResolvedValue("https://res.cloudinary.com/mock-url.mp3"),
   },
   SUPPORTED_LANGUAGES: {
     en: { label: "English", ttsCode: "en" },
     hinglish: { label: "Hinglish", ttsCode: "hi" },
     hi: { label: "Hindi", ttsCode: "hi" },
-  }
+  },
 }));
 
 // ✅ Mock Credit Service (Avoids Redis Complexity)
@@ -63,7 +68,9 @@ jest.mock("../../src/services/creditService", () => ({
 
 jest.mock("../../src/services/ModelGateway", () => ({
   modelGateway: {
-    generateAudio: jest.fn().mockResolvedValue(Buffer.from("mock_audio_buffer")),
+    generateAudio: jest
+      .fn()
+      .mockResolvedValue(Buffer.from("mock_audio_buffer")),
   },
 }));
 
@@ -73,9 +80,10 @@ jest.mock("cloudinary", () => ({
     uploader: {
       upload_stream: jest.fn((options, cb) => {
         if (cb) {
-          cb(null, { 
-            secure_url: "https://res.cloudinary.com/demo/video/upload/v1/mock_audio.mp3", 
-            public_id: "audio_123" 
+          cb(null, {
+            secure_url:
+              "https://res.cloudinary.com/demo/video/upload/v1/mock_audio.mp3",
+            public_id: "audio_123",
           });
         }
         const { Writable } = require("stream");
@@ -155,7 +163,8 @@ describe("Media Routes Integration", () => {
   let userId: string;
 
   beforeAll(async () => {
-    const uri = process.env.MONGO_URI || "mongodb://mongo:27017/courseforge_test";
+    const uri =
+      process.env.MONGO_URI || "mongodb://mongo:27017/courseforge_test";
     try {
       await mongoose.connect(uri);
     } catch (e) {
@@ -197,8 +206,8 @@ describe("Media Routes Integration", () => {
       // Our mock returns a single object now, controller might wrap or return as is
       // Based on controller logic: res.json(videoData)
       expect(response.body.title).toBe("Learn React in 10 Min");
-      
-      expect(youtubeService.searchVideo).toHaveBeenCalled(); 
+
+      expect(youtubeService.searchVideo).toHaveBeenCalled();
     });
 
     it("should return 400 if query is missing", async () => {
@@ -213,17 +222,28 @@ describe("Media Routes Integration", () => {
   describe("POST /media/audio/:lessonId", () => {
     it("should generate audio, save to lesson, and return URL", async () => {
       // 1. Setup Data
-      const course = await Course.create({ title: "C", description: "D", userId, tags: [], modules: [] });
-      const module = await Module.create({ title: "M", course: course._id, lessons: [] });
+      const course = await Course.create({
+        title: "C",
+        description: "D",
+        userId,
+        tags: [],
+        modules: [],
+      });
+      const module = await Module.create({
+        title: "M",
+        course: course._id,
+        lessons: [],
+      });
       const lesson = await Lesson.create({
         title: "Test Lesson",
         module: module._id,
-        content: [{ type: "paragraph", text: "This is sample text for audio." }]
+        content: [
+          { type: "paragraph", text: "This is sample text for audio." },
+        ],
       });
 
       // 2. Call Endpoint
-      const response = await request(app)
-        .post(`/media/audio/${lesson._id}`);
+      const response = await request(app).post(`/media/audio/${lesson._id}`);
 
       // 3. Assertions
       expect(response.status).toBe(200);
@@ -231,7 +251,9 @@ describe("Media Routes Integration", () => {
 
       // 4. Verify DB Update
       const updatedLesson = await Lesson.findById(lesson._id);
-      const hasAudio = updatedLesson?.audioUrls?.["hinglish"] || (updatedLesson as any).audioUrls?.hinglish;
+      const hasAudio =
+        updatedLesson?.audioUrls?.["hinglish"] ||
+        (updatedLesson as any).audioUrls?.hinglish;
       expect(hasAudio).toBeTruthy();
     });
 
