@@ -17,7 +17,7 @@ export class ModelGateway {
   private openai: OpenAI;
   private deepseek: OpenAI;
   private gemini: GoogleGenerativeAI;
-  private groq: Groq;
+  private groq: OpenAI;
 
   constructor() {
     this.openai = wrapOpenAI(
@@ -30,7 +30,12 @@ export class ModelGateway {
       }),
     );
     this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
-    this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    this.groq = wrapOpenAI(
+      new OpenAI({
+        baseURL: "https://api.groq.com/openai/v1",
+        apiKey: process.env.GROQ_API_KEY,
+      }),
+    );
   }
 
   /**
@@ -40,7 +45,7 @@ export class ModelGateway {
     prompt: string,
     tier: TaskTier,
     systemInstruction?: string,
-    jsonMode: boolean = false, // 👈 New Flag to trigger Native JSON
+    jsonMode: boolean = false,
   ): Promise<string> {
     try {
       switch (tier) {
@@ -51,12 +56,12 @@ export class ModelGateway {
             "llama-3.3-70b-versatile",
             jsonMode,
           );
-          // return this.callChatGPT(
-          //   prompt,
-          //   systemInstruction,
-          //   "gpt-4o",
-          //   jsonMode,
-          // );
+        // return this.callChatGPT(
+        //   prompt,
+        //   systemInstruction,
+        //   "gpt-4o",
+        //   jsonMode,
+        // );
 
         // console.log("🧠 [Factory] Routing to DeepSeek-V3...");
         // return this.callDeepSeek(prompt, systemInstruction, jsonMode);
@@ -90,7 +95,7 @@ export class ModelGateway {
             "llama-3.3-70b-versatile",
             jsonMode,
           );
-          return this.callGemini(prompt, systemInstruction);
+        // return this.callGemini(prompt, systemInstruction);
 
         default:
           throw new Error("Invalid Task Tier");
@@ -146,15 +151,13 @@ export class ModelGateway {
     },
   );
 
-  // 2. Groq Driver
   private callGroq = traceable(
     async (
       prompt: string,
       system?: string,
-      modelId?: string,
+      modelId: string = "llama-3.3-70b-versatile",
       jsonMode?: boolean,
     ) => {
-      const run = getCurrentRunTree();
       return retryWithBackoff(async () => {
         const response = await this.groq.chat.completions.create({
           messages: [
@@ -164,15 +167,10 @@ export class ModelGateway {
             },
             { role: "user", content: prompt },
           ],
-          model: modelId || "llama-3.3-70b-versatile",
-          // ✅ Groq (Llama 3) supports JSON mode natively
+          model: modelId,
           response_format: jsonMode ? { type: "json_object" } : undefined,
         });
 
-        const usage = response.usage;
-        if (run && usage) {
-          run.metadata = { ...run.metadata, token_usage: usage };
-        }
         return response.choices[0]?.message?.content || "";
       });
     },
