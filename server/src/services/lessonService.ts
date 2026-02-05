@@ -192,12 +192,15 @@ export class LessonService {
       Create a detailed lesson for: "${lesson.title}".
       Context: Module "${moduleTitle}" in Course "${courseTitle}".
       `;
-
+      const tier =
+        lesson.generationMode === "pro"
+          ? TaskTier.LOGIC_REASONING
+          : TaskTier.CREATIVE_WRITING;
       // Call AI
       structuredLesson = await modelGateway.generateStructured(
         `${systemPrompt}\n\nUSER REQUEST: ${userPrompt}`,
         lessonResponseSchema,
-        TaskTier.CREATIVE_WRITING,
+        tier,
       );
 
       // ---------------------------------------------------------

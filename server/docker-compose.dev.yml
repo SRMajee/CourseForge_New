@@ -1,5 +1,27 @@
 services:
   # -----------------------------
+  # Worker Service 
+  # -----------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps
+    container_name: courseforge_worker
+    # ✅ Run directly with tsx (Hot Reloads on change)
+    command: npx tsx watch src/workers/worker-entry.ts
+    env_file:
+      - ./.env
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    networks:
+      - app_network
+  # -----------------------------
   # Node.js Backend (Dev Mode)
   # -----------------------------
   api:

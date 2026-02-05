@@ -32,11 +32,10 @@ export interface ILesson extends Document {
   isEnriched: boolean;
   audioUrls?: Record<string, string>;
   generationMode: "standard" | "pro";
-  // ✅ NEW: History for Refinement
   history: Array<{
     timestamp: Date;
     instruction: string;
-    content: any[]; // Snapshot of the content array
+    content: any[]; 
     generationMode: "standard" | "pro";
   }>;
 
@@ -75,7 +74,6 @@ const LessonSchema = new Schema<ILesson>(
       enum: ["standard", "pro"],
       default: "standard",
     },
-    // ✅ History Field
     history: [
       {
         timestamp: { type: Date, default: Date.now },

@@ -10,9 +10,9 @@ import {
   Flex,
 } from "@chakra-ui/react";
 import { NavLink, useNavigate } from "react-router";
-import { FaPlus, FaComment, FaCog, FaHome, FaBook } from "react-icons/fa"; // Added FaBook
+import { FaPlus, FaCog, FaHome, FaBook } from "react-icons/fa";
 import { useCourses } from "~/features/course/hooks/useCourses";
-import { isToday, isYesterday, isThisWeek, parseISO } from "date-fns";
+import { isToday, isYesterday, parseISO } from "date-fns";
 
 const groupCoursesByDate = (courses: any[]) => {
   const groups = {
@@ -41,7 +41,12 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
   const courses = response?.data || [];
   const groupedHistory = groupCoursesByDate(courses);
 
-  const SidebarContent = () => (
+  // ✅ Helper to close drawer on mobile when clicking a link
+  const handleMobileNav = () => {
+    if (isOpen) onClose();
+  };
+
+  const SidebarContent = ({ isMobile = false }) => (
     <Flex
       direction="column"
       h="full"
@@ -59,9 +64,13 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
           w="full"
           colorPalette="blue"
           variant="surface"
-          size={isCollapsed ? "sm" : "md"}
-          onClick={() => navigate("/dashboard")}
-          justifyContent={isCollapsed ? "center" : "flex-start"}
+          // ✅ Keep 'md' size on mobile (isCollapsed doesn't apply to drawer)
+          size={isCollapsed && !isMobile ? "sm" : "md"}
+          onClick={() => {
+            navigate("/dashboard");
+            handleMobileNav();
+          }}
+          justifyContent={isCollapsed && !isMobile ? "center" : "flex-start"}
           rounded="2xl"
           shadow="sm"
           bg="blue.500/10"
@@ -78,19 +87,19 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
           <Icon fontSize="md">
             <FaPlus />
           </Icon>
-          {!isCollapsed && <Text ml={2}>New Chat</Text>}
+          {(!isCollapsed || isMobile) && <Text ml={2}>New Chat</Text>}
         </Button>
       </Box>
 
       <VStack align="stretch" gap={1} mb={6}>
         {/* DASHBOARD */}
-        <NavLink to="/dashboard" style={{ textDecoration: "none" }}>
+        <NavLink to="/dashboard" style={{ textDecoration: "none" }} onClick={handleMobileNav}>
           {({ isActive }) => (
             <HStack
               p={2}
               borderRadius="xl"
               cursor="pointer"
-              justify={isCollapsed ? "center" : "flex-start"}
+              justify={isCollapsed && !isMobile ? "center" : "flex-start"}
               bg={isActive ? "whiteAlpha.100" : "transparent"}
               color={isActive ? "fg.default" : "fg.muted"}
               _hover={{ bg: "whiteAlpha.50" }}
@@ -99,7 +108,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
               <Icon opacity={isActive ? 1 : 0.7}>
                 <FaHome />
               </Icon>
-              {!isCollapsed && (
+              {(!isCollapsed || isMobile) && (
                 <Text
                   fontWeight={isActive ? "semibold" : "medium"}
                   fontSize="sm"
@@ -111,14 +120,14 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
           )}
         </NavLink>
 
-        {/* ✅ MY LIBRARY (Added) */}
-        <NavLink to="/courses" style={{ textDecoration: "none" }}>
+        {/* MY LIBRARY */}
+        <NavLink to="/courses" style={{ textDecoration: "none" }} onClick={handleMobileNav}>
           {({ isActive }) => (
             <HStack
               p={2}
               borderRadius="xl"
               cursor="pointer"
-              justify={isCollapsed ? "center" : "flex-start"}
+              justify={isCollapsed && !isMobile ? "center" : "flex-start"}
               bg={isActive ? "whiteAlpha.100" : "transparent"}
               color={isActive ? "fg.default" : "fg.muted"}
               _hover={{ bg: "whiteAlpha.50" }}
@@ -127,7 +136,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
               <Icon opacity={isActive ? 1 : 0.7}>
                 <FaBook />
               </Icon>
-              {!isCollapsed && (
+              {(!isCollapsed || isMobile) && (
                 <Text
                   fontWeight={isActive ? "semibold" : "medium"}
                   fontSize="sm"
@@ -146,7 +155,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
         overflowY="auto"
         overflowX="hidden"
         css={{
-          "&::-webkit-scrollbar": { width: "0px" }, // Hidden scrollbar for sleekness
+          "&::-webkit-scrollbar": { width: "0px" },
         }}
       >
         {isLoading ? (
@@ -159,7 +168,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
             ([label, items]) =>
               items.length > 0 && (
                 <Box key={label} mb={6}>
-                  {!isCollapsed && (
+                  {(!isCollapsed || isMobile) && (
                     <Text
                       fontSize="10px"
                       fontWeight="bold"
@@ -179,13 +188,14 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
                         key={course._id}
                         to={`/course/${course._id}`}
                         style={{ textDecoration: "none" }}
+                        onClick={handleMobileNav}
                       >
                         {({ isActive }) => (
                           <HStack
                             p={2}
                             h="36px"
                             borderRadius="lg"
-                            justify={isCollapsed ? "center" : "flex-start"}
+                            justify={isCollapsed && !isMobile ? "center" : "flex-start"}
                             bg={isActive ? "whiteAlpha.100" : "transparent"}
                             color={isActive ? "fg.default" : "fg.muted"}
                             _hover={{
@@ -194,12 +204,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
                             }}
                             transition="all 0.2s"
                           >
-                            {/* {!isActive && (
-                              <Icon fontSize="xs" opacity={0.5}>
-                                <FaComment />
-                              </Icon>
-                            )} */}
-                            {!isCollapsed && (
+                            {(!isCollapsed || isMobile) && (
                               <Text fontSize="sm" lineClamp={1}>
                                 {course.title}
                               </Text>
@@ -217,19 +222,19 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
 
       {/* SETTINGS */}
       <Box mt="auto" pt={2} borderTopWidth="1px" borderColor="whiteAlpha.100">
-        <NavLink to="/settings" style={{ textDecoration: "none" }}>
+        <NavLink to="/settings" style={{ textDecoration: "none" }} onClick={handleMobileNav}>
           {({ isActive }) => (
             <HStack
               p={2}
               borderRadius="xl"
-              justify={isCollapsed ? "center" : "flex-start"}
+              justify={isCollapsed && !isMobile ? "center" : "flex-start"}
               color={isActive ? "fg.default" : "fg.muted"}
               _hover={{ bg: "whiteAlpha.50", color: "fg.default" }}
             >
               <Icon>
                 <FaCog />
               </Icon>
-              {!isCollapsed && <Text fontSize="sm">Settings</Text>}
+              {(!isCollapsed || isMobile) && <Text fontSize="sm">Settings</Text>}
             </HStack>
           )}
         </NavLink>
@@ -242,9 +247,15 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
       <Drawer.Root open={isOpen} placement="start" onOpenChange={onClose}>
         <Drawer.Backdrop />
         <Drawer.Positioner>
-          <Drawer.Content bg="transparent" boxShadow="none">
+          {/* ✅ Styled Drawer Content */}
+          <Drawer.Content 
+            bg="rgba(10, 10, 10, 0.95)" // Darker bg for better contrast on mobile
+            _light={{ bg: "rgba(255, 255, 255, 0.95)" }}
+            backdropFilter="blur(20px)"
+            boxShadow="none"
+          >
             <Drawer.Body p={0}>
-              <SidebarContent />
+              <SidebarContent isMobile={true} />
             </Drawer.Body>
           </Drawer.Content>
         </Drawer.Positioner>
@@ -253,7 +264,7 @@ export const Sidebar = ({ isOpen, onClose, isCollapsed }: SidebarProps) => {
         display={{ base: "none", md: "block" }}
         w={isCollapsed ? "72px" : "260px"}
         h="100%"
-        transition="width 0.4s cubic-bezier(0.16, 1, 0.3, 1)" // Apple ease
+        transition="width 0.4s cubic-bezier(0.16, 1, 0.3, 1)"
       >
         <SidebarContent />
       </Box>

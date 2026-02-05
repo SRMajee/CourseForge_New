@@ -2,38 +2,30 @@ import { Worker, Job } from "bullmq";
 import { redisConnection } from "../config/redis";
 import { COURSE_QUEUE_NAME, CourseGenerationJob } from "../queues/courseQueue";
 import { courseService } from "../services/courseService";
-import { socketService } from "../services/socketService";
-import { User } from "../models/User";
+// ❌ DELETE: import { socketService } ...
+// ❌ DELETE: import { User } ...
 import logger from "../utils/logger";
 
 export const courseWorker = new Worker<CourseGenerationJob>(
   COURSE_QUEUE_NAME,
   async (job: Job<CourseGenerationJob>) => {
-    const { userId, topic, action, userAnswers, mode } = job.data;
+    const { userId, topic, action, userAnswers, mode, metadata } = job.data;
     let heartbeat: NodeJS.Timeout | null = null;
-
-    // 1. Broadcast Setup
-    const user = await User.findById(userId);
-    const rooms = [userId];
-    if (user?.auth0Id) rooms.push(user.auth0Id);
-    if (user?.email) rooms.push(user.email);
-
-    const broadcast = (event: string, data: any) => {
-      rooms.forEach((room) => socketService.emitToUser(room, event, data));
-    };
 
     try {
       logger.info(
-        `⚙️ [Worker] Job ${job.id} started for ${userId} | Mode: ${mode || "standard"} | Action: ${action}`,
+        `⚙️ [Worker] Job ${job.id} started for ${userId} | Mode: ${mode || "standard"}`,
       );
 
-      // 2. Notify Started
-      broadcast("course_generation_started", {
-        jobId: job.id,
+      // ✅ 1. SIGNAL START via Redis (The Listener will pick this up)
+      await job.updateProgress({
+        userId,
+        progress: 1,
         message: `Initializing Agentic Workflow (${mode})...`,
+        status: "started", // 👈 This tells the API to emit 'course_generation_started'
       });
 
-      // 3. Heartbeat (UX Feedback & Keep-Alive)
+      // ✅ 2. Heartbeat (Updates Progress in Redis)
       const baseMessages = [
         "Analyzing curriculum standards...",
         "Structuring course modules...",
@@ -48,37 +40,28 @@ export const courseWorker = new Worker<CourseGenerationJob>(
       heartbeat = setInterval(async () => {
         const increment = progress < 60 ? 10 : progress < 85 ? 5 : 1;
         progress = Math.min(progress + increment, 95);
-
         const msgIndex = tick % baseMessages.length;
 
-        // A. Notify Frontend
-        broadcast("job_progress", {
-          jobId: job.id,
-          status: "processing",
-          message: baseMessages[msgIndex],
+        // Push update to Queue
+        await job.updateProgress({
+          userId,
           progress: Math.floor(progress),
+          message: baseMessages[msgIndex],
+          status: "processing",
         });
 
-        // B. ✅ FIX: Notify Redis/BullMQ that we are alive
-        // This prevents the job from being marked as "stalled" during long Pro generations
-        try {
-          await job.updateProgress(progress);
-        } catch (e) {
-          // Ignore updates if job finished
-        }
-
         tick++;
-      }, 2000); // Slower tick (2s) to reduce socket noise
+      }, 2000);
 
-      // 4. Execute Logic with Timeout Race
-      // ✅ FIX: Force timeout after 180s (3 mins) to prevent infinite hangs
-      const PRO_TIMEOUT = 180000;
+      // 3. Execution Logic
+      const PRO_TIMEOUT = 180000; // 3 mins
 
       const generationPromise = (async () => {
         if (action === "generate_outline" || action === "resume_course") {
           return await courseService.generateCourse(userId, topic, {
             userAnswers,
             mode,
+            paymentContext: metadata?.payment,
           });
         }
         throw new Error(`Unknown action: ${action}`);
@@ -91,39 +74,30 @@ export const courseWorker = new Worker<CourseGenerationJob>(
         ),
       );
 
-      // Race the generation against the clock
       const result: any = await Promise.race([
         generationPromise,
         timeoutPromise,
       ]);
 
-      // Stop Heartbeat
       if (heartbeat) clearInterval(heartbeat);
 
-      // 5. Handle Success
       if (result) {
-        logger.info(`✅ [Worker] Job ${job.id} DONE. Result ID: ${result._id}`);
-        const payload = {
-          jobId: job.id,
-          courseId: result._id,
-          title: result.title,
-          message: "Course generated successfully!",
-          result: result,
-        };
-        broadcast("course_generated", payload);
-        broadcast("job_complete", payload);
+        logger.info(`✅ [Worker] Job ${job.id} DONE.`);
+        // ❌ NO socket emission here. Just return.
+        return result;
       } else {
         throw new Error("Job finished with no result");
       }
-
-      return result;
     } catch (error: any) {
       if (heartbeat) clearInterval(heartbeat);
       logger.error(`❌ [Worker] Job ${job.id} CRASHED:`, error);
 
-      broadcast("course_generation_error", {
-        jobId: job.id,
-        message: error.message || "Deep reasoning process failed.",
+      // Signal Failure via Redis
+      await job.updateProgress({
+        userId,
+        progress: 0,
+        message: error.message || "Process failed.",
+        status: "failed",
       });
 
       throw error;
@@ -131,10 +105,8 @@ export const courseWorker = new Worker<CourseGenerationJob>(
   },
   {
     connection: redisConnection,
-    concurrency: 5,
-    // ✅ FIX: Increase Lock Duration to 5 minutes (300s)
-    // Pro jobs take time. 60s is too short for DeepSeek/GPT-4 logic tiers.
+    concurrency: 25,
     lockDuration: 300000,
-    drainDelay: 5000, // Reduced slightly for responsiveness
+    limiter: { max: 10, duration: 5000 },
   },
 );

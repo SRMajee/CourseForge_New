@@ -10,12 +10,11 @@ export interface ICourse extends Document {
   generationMode: "standard" | "pro";
   feedback?: "like" | "dislike" | null;
 
-  // ✅ History now tracks the Mode of that version
   history: Array<{
     timestamp: Date;
     instruction: string;
     modules: mongoose.Types.ObjectId[];
-    generationMode: "standard" | "pro"; // 👈 Added
+    generationMode: "standard" | "pro";
   }>;
 
   createdAt: Date;
@@ -40,13 +39,12 @@ const CourseSchema = new Schema<ICourse>(
       enum: ["like", "dislike", null],
       default: null,
     },
-    // ✅ Updated History Schema
     history: [
       {
         timestamp: { type: Date, default: Date.now },
         instruction: { type: String },
         modules: [{ type: Schema.Types.ObjectId, ref: "Module" }],
-        generationMode: { type: String, enum: ["standard", "pro"] }, // 👈 Store mode here
+        generationMode: { type: String, enum: ["standard", "pro"] }, 
       },
     ],
   },
@@ -54,5 +52,6 @@ const CourseSchema = new Schema<ICourse>(
 );
 
 CourseSchema.index({ userId: 1, createdAt: -1 });
+CourseSchema.index({ tags: 1 });
 
 export const Course = mongoose.model<ICourse>("Course", CourseSchema);

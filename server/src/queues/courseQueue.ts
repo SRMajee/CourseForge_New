@@ -15,26 +15,33 @@ export interface CourseGenerationJob {
 
 export const COURSE_QUEUE_NAME = "course-generation";
 
+/**
+ * Course Generation Queue
+ *
+ * This queue handles background tasks related to course generation,
+ * including outline creation, lesson content generation, and resuming
+ * interrupted course generation processes.
+ *
+ * It is optimized for serverless environments with appropriate job
+ * retention policies and retry mechanisms.
+ */
 export const courseQueue = new Queue<CourseGenerationJob>(COURSE_QUEUE_NAME, {
   connection: redisConnection,
+
   defaultJobOptions: {
-    // ⚠️ CRITICAL OPTIMIZATION FOR FREE REDIS ⚠️
-    // Auto-remove jobs from Redis once they are done/failed.
-    // '100' means keep the last 100 jobs for debugging, delete the rest.
-    // '1000' is the count limit.
     removeOnComplete: {
       age: 24 * 3600, // Keep for 24 hours
       count: 100, // Or keep max 100 entries
     },
     removeOnFail: {
-      age: 24 * 3600 * 3, // Keep failed jobs longer (3 days) for debugging
+      age: 24 * 3600 * 2, // Keep failed jobs longer (3 days) for debugging
       count: 200,
     },
     // Retry logic saves manual restarts
     attempts: 3,
     backoff: {
       type: "exponential",
-      delay: 1000,
+      delay: 2000,
     },
   },
 });

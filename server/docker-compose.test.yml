@@ -1,5 +1,5 @@
 services:
-  # 🟢 Test Runner
+  # 🟢 Test Runner (Executes Jest)
   test_runner:
     build:
       context: .
@@ -14,7 +14,7 @@ services:
       - GROQ_API_KEY=mock_groq
       - GEMINI_API_KEY=mock_gemini
       - MONGO_URI=mongodb://mongo:27017/courseforge_test
-      - REDIS_HOST=courseforge_test_redis # 👈 Use the service name, NOT localhost
+      - REDIS_HOST=courseforge_test_redis
       - REDIS_PORT=6379
       - REDIS_URL=redis://courseforge_test_redis:6379
     command: pnpm exec jest --runInBand --logHeapUsage --detectOpenHandles --forceExit
@@ -28,6 +28,39 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      worker:                 
+        condition: service_started
+    networks:
+      - test_network
+
+  # 👷 Test Worker (NEW: Processes Queued Jobs during tests)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps
+    container_name: courseforge_test_worker
+    env_file:
+      - .env.test
+    environment:
+      - NODE_ENV=test
+      - MONGO_URI=mongodb://mongo:27017/courseforge_test
+      - REDIS_HOST=courseforge_test_redis
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://courseforge_test_redis:6379
+      - GROQ_API_KEY=mock_groq
+      - GEMINI_API_KEY=mock_gemini
+    # Run the worker script directly (adjust path if your entry point differs)
+    command: npx tsx src/workers/worker-entry.ts
+    volumes:
+      - ./src:/app/src
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - test_network
 
@@ -35,7 +68,7 @@ services:
   mongo:
     image: mongo:6.0
     container_name: courseforge_test_mongo
-    hostname: mongo # ✅ Explicit hostname
+    hostname: mongo
     ports:
       - "27018:27017"
     tmpfs:
@@ -45,17 +78,21 @@ services:
       - test_network
     healthcheck:
       test: |
-        # ✅ FIX: Initialize RS using 'mongo:27017' so clients know the correct address
         test $$(mongosh --quiet --eval "try { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}) } catch(e) { rs.status().ok }") -eq 1
       interval: 10s
       start_period: 5s
 
-  # 🟢 Isolated Redis
+  # 🟢 Isolated Redis (Updated for Vector Search)
   redis:
-    image: redis:alpine
+    image: redis/redis-stack-server:latest # 👈 CHANGED: Needed for Vector Store RAG tests
     container_name: courseforge_test_redis
     networks:
       - test_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   test_network:

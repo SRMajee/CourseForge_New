@@ -2,19 +2,19 @@ import { redisClient } from "../config/redis";
 import { CacheEntry } from "../models/CacheEntry";
 import logger from "../utils/logger";
 
-// Redis TTL: 1 Day (Seconds)
-const REDIS_TTL = 24 * 60 * 60;
+//  Redis TTL = 1 Hour (3600 seconds)
+const REDIS_TTL = 60 * 60;
 
 export class SemanticCache {
   // --- OUTLINES ---
   async getCachedOutline(topic: string): Promise<any | null> {
     const normalizedKey = this.normalize(topic);
-    return this.hybridGet(normalizedKey, topic, "outline");
+    return this.hybridGet(normalizedKey, topic, "course");
   }
 
   async setCachedOutline(topic: string, data: any) {
     const normalizedKey = this.normalize(topic);
-    await this.hybridSet(normalizedKey, topic, data, "outline");
+    await this.hybridSet(normalizedKey, topic, data, "course");
   }
 
   // --- LESSONS ---
@@ -23,7 +23,6 @@ export class SemanticCache {
     lessonTitle: string,
   ): Promise<any | null> {
     const key = `lesson:${this.normalize(courseTitle)}:${this.normalize(lessonTitle)}`;
-    // Pass lessonTitle as "topic" for logging/fuzzy matching purposes
     return this.hybridGet(key, lessonTitle, "lesson");
   }
 
@@ -33,56 +32,36 @@ export class SemanticCache {
   }
 
   // ==========================================
-  // ⚙️ INTERNAL HYBRID LOGIC (DRY Principle)
+  // ⚙️ INTERNAL HYBRID LOGIC (OPTIMIZED)
   // ==========================================
 
   private async hybridGet(
     key: string,
     topic: string,
-    type: "outline" | "lesson",
+    type: "course" | "lesson",
   ): Promise<any | null> {
     try {
-      // 1. Check Redis (Fast Signal)
-      const isHot = await redisClient.get(key);
+      // 1. Check Redis (Fastest: ~2ms)
+      const cachedString = await redisClient.get(key);
 
-      if (isHot) {
-        // 🔥 Hot Key: It SHOULD be in Mongo. Fetch directly by Key.
-        const entry = await CacheEntry.findOne({ key });
-        if (entry) {
-          logger.info(`⚡ [Redis+Mongo Hit] Serving "${topic}"`);
-          return entry.data;
-        }
+      if (cachedString) {
+        // HIT: Parse and return immediately. NO Mongo call.
+        logger.info(`⚡ [Redis Hit] Serving "${topic}" from RAM`);
+        return JSON.parse(cachedString);
       }
 
-      // 2. Cold Start / Redis Expired: Search Mongo
+      // 2. Cold Start / Redis Expired: Search Mongo (Slower: ~50ms)
       logger.info(`🐢 [Redis Miss] Searching Mongo for "${topic}"...`);
 
-      const entry = await CacheEntry.findOne({ key });
-
-      // 🚨 FIX: DISABLED FUZZY SEARCH
-      // The fuzzy search was causing false positives because the cache key contains
-      // common words like "standard" (e.g. "ML-standard" matched "DBMS-standard").
-      // We now rely STRICTLY on normalized key matching to prevent serving wrong courses.
-
-      /*
-      if (!entry && type === "outline") {
-        const results = await CacheEntry.find(
-          { $text: { $search: topic }, type: "outline" },
-          { score: { $meta: "textScore" } },
-        )
-          .sort({ score: { $meta: "textScore" } })
-          .limit(1);
-
-        if (results.length > 0) {
-          entry = results[0];
-          logger.info(`✅ [Mongo Fuzzy Hit] Found similar: "${entry.topic}"`);
-        }
-      }
-      */
+      const entry = await CacheEntry.findOne({ key, type });
 
       // 3. If Found in Mongo -> Re-populate Redis (Make it Hot)
       if (entry) {
-        await redisClient.setex(entry.key, REDIS_TTL, "1"); // Store flag, not data
+        logger.info(`🔄 [Cache Hydration] Loading "${topic}" into Redis`);
+
+        // Store FULL data in Redis for 1 Hour
+        await redisClient.setex(key, REDIS_TTL, JSON.stringify(entry.data));
+
         return entry.data;
       }
 
@@ -97,27 +76,28 @@ export class SemanticCache {
     key: string,
     topic: string,
     data: any,
-    type: "outline" | "lesson",
+    type: "course" | "lesson",
   ) {
     try {
-      // 1. Save to MongoDB (Long Term: 90 Days)
+      // 1. Save to MongoDB (Long Term: 90 Days Persistence)
       await CacheEntry.findOneAndUpdate(
         { key },
         {
           key,
-          topic,
+          topic, // Useful for debugging manually in Mongo
           data,
           type,
-          createdAt: new Date(), // Reset TTL to 90 days from now
+          createdAt: new Date(), // Reset Mongo TTL
         },
         { upsert: true, new: true },
       );
 
-      // 2. Save Key to Redis (Short Term: 1 Day)
-      // We only store "1" to save RAM. The data is in Mongo.
-      await redisClient.setex(key, REDIS_TTL, "1");
+      // 2. Save to Redis (Short Term: 1 Hour Acceleration)
+      await redisClient.setex(key, REDIS_TTL, JSON.stringify(data));
 
-      logger.info(`💾 [Hybrid Cache Saved] "${topic}" (Redis: 1d, Mongo: 90d)`);
+      logger.info(
+        `💾 [Hybrid Cache Saved] "${topic}" (Redis: 1hr, Mongo: 90d)`,
+      );
     } catch (error) {
       logger.error(`❌ [Cache Write Error]`, error);
     }

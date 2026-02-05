@@ -1,6 +1,5 @@
 import mongoose, { Schema, Document } from "mongoose";
 
-// ✅ FIX 1: Relax Enum to accept "free" and "pro" (lowercase)
 export const PLAN_TYPES = ["FREE", "PRO", "free", "pro"] as const;
 export type PlanType = (typeof PLAN_TYPES)[number];
 
@@ -47,7 +46,6 @@ const userSchema = new Schema<IUser>(
 
     credits: { type: Number, default: 200 },
 
-    // ✅ FIX 2: Remove 'unique' from sparse fields to avoid null collision errors
     stripeCustomerId: { type: String, sparse: true },
     subscriptionId: { type: String, sparse: true },
 
@@ -60,7 +58,7 @@ const userSchema = new Schema<IUser>(
 
     planType: {
       type: String,
-      enum: PLAN_TYPES, // ✅ Uses the relaxed list
+      enum: PLAN_TYPES, 
       default: "FREE",
     },
     hasUsedProTrial: { type: Boolean, default: false },

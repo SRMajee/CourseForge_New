@@ -256,7 +256,7 @@ export class ModelGateway {
   );
 
   /**
-   * SELF-HEALING GENERATOR (Simplified for Phase 2)
+   * SELF-HEALING GENERATOR
    */
   generateStructured = traceable(
     async <S extends ZodTypeAny>(
@@ -271,11 +271,11 @@ export class ModelGateway {
 
       while (attempts <= maxRetries) {
         try {
-          console.log(
-            `🔄 [Attempt ${attempts + 1}] Generating structure with ${currentTier}...`,
-          );
+          // console.log(
+          //   `🔄 [Attempt ${attempts + 1}] Generating structure with ${currentTier}...`,
+          // );
 
-          // ✅ 1. Enable JSON Mode via Flag
+          // 1. Enable JSON Mode via Flag
           const rawResult = await this.generate(
             currentPrompt,
             currentTier,

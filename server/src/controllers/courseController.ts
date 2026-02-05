@@ -1,15 +1,15 @@
 import { Request, Response } from "express";
 import { CourseService, courseService } from "../services/courseService";
 import { LessonService, lessonService } from "../services/lessonService";
-import { clarificationService } from "../services/ClarificationService"; // 👈 Phase 8
+import { clarificationService } from "../services/ClarificationService";
 import logger from "../utils/logger";
 import { courseQueue } from "../queues/courseQueue";
-import { redisClient } from "../config/redis"; // 👈 Phase 8
+import { redisClient } from "../config/redis";
 import { env } from "../config/env";
 import { socketService } from "../services/socketService";
 import { User } from "../models/User";
 import { codeExecutionService } from "../services/CodeExecutionService";
-import { CREDIT_COSTS } from "../config/credits"; // 👈 Add this
+import { CREDIT_COSTS } from "../config/credits";
 import { Course } from "../models/Course";
 import { Module } from "../models/Module";
 import { creditService } from "../services/creditService";
@@ -34,14 +34,10 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
     }
 
     // 1. Fetch User to determine Status & Trial Eligibility
-    // const user = await User.findById(userId).select(
-    //   "planType subscriptionStatus hasUsedProTrial credits",
-    // );
     const user = await creditService.getUserContext(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const isPro =
-      user.planType === "PRO" || user.subscriptionStatus === "active";
+    const isPro = user.isPro;
     const requestedMode = mode === "pro" ? "pro" : "standard";
     let isTrial = false;
     // 2. Dynamic Cost Calculation (Pre-flight Check)
@@ -67,11 +63,21 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
 
     // 3. Validate Balance (Fast Fail)
     // We check against 'requiredCredits' which might be 0 for a trial
-    if (user.credits < requiredCredits) {
+    try {
+      await courseService.validateBalance(userId.toString(), requiredCredits);
+    } catch (err: any) {
+      logger.warn(
+        `Balance validation failed for user ${userId}: ${err.message}`,
+      );
       return res.status(402).json({
         message: `Insufficient credits. Required: ${requiredCredits}, Available: ${user.credits}`,
       });
     }
+    // if (user.credits < requiredCredits) {
+    //   return res.status(402).json({
+    //     message: `Insufficient credits. Required: ${requiredCredits}, Available: ${user.credits}`,
+    //   });
+    // }
 
     // ---------------------------------------------------------
     // 🚦 PHASE 8: Synchronous Ambiguity Check (PRO EXCLUSIVE)
@@ -82,14 +88,14 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
       if (analysis.isAmbiguous && analysis.questions?.length > 0) {
         const jobId = `job:${userId}:${Date.now()}`;
 
-        // ✅ SAVE MODE TO REDIS (So we don't lose it on resume)
+        // SAVE MODE TO REDIS (So we don't lose it on resume)
         await redisClient.setex(
           jobId,
           3600,
           JSON.stringify({
             userId,
             topic,
-            mode: requestedMode, // 👈 Persistent Mode
+            mode: requestedMode,
             timestamp: Date.now(),
           }),
         );
@@ -217,7 +223,7 @@ export const refineLessonContent = async (req: Request, res: Response) => {
   }
 };
 /**
- * ✅ FIXED RESUME CONTROLLER (Robust Input & Idempotency)
+ * POST /api/v1/courses/resume
  */
 export const resumeCourse = async (req: Request, res: Response) => {
   try {
@@ -231,10 +237,10 @@ export const resumeCourse = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Missing Job ID" });
     }
 
-    // 1. Validate State (Idempotency Fix)
+    // 1. Validate State
     const stateRaw = await redisClient.get(jobId);
 
-    // 🛑 FIX: If key missing, assume duplicate request (success).
+    // FIX: If key missing, assume duplicate request (success).
     if (!stateRaw) {
       logger.warn(`⚠️ [Resume] Key missing for ${jobId}. Assuming duplicate.`);
       socketService.emitToUser(userId, "resume_processed", { success: true });
@@ -275,7 +281,7 @@ export const resumeCourse = async (req: Request, res: Response) => {
       action: "generate_outline",
       userAnswers: processedAnswers,
       skipClarification: true,
-      mode: state.mode || "standard", // 👈 Restore Mode
+      mode: state.mode || "standard",
     });
 
     logger.info(
@@ -297,7 +303,10 @@ export const resumeCourse = async (req: Request, res: Response) => {
     return res.status(500).json({ message: "Failed to resume course" });
   }
 };
-// ✅ 1. Module PDF Deduction
+
+/*
+ * ✅ 1. Module PDF Deduction
+ */
 export const downloadModulePDF = async (req: Request, res: Response) => {
   try {
     const { lessonId } = req.params;

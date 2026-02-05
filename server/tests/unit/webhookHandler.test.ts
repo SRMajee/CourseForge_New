@@ -51,10 +51,8 @@ describe("Webhook Handler (Unit)", () => {
   beforeAll(async () => {
     const uri =
       process.env.MONGO_URI || "mongodb://mongo:27017/courseforge_test";
-    try {
-      await mongoose.connect(uri);
-    } catch (e) {}
-  });
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
+  }, 30000); // 30s timeout
 
   afterAll(async () => {
     await mongoose.disconnect();

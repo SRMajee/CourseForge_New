@@ -11,7 +11,8 @@ docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
 
 # OR Run in watch mode (great for development)
 docker-compose -f docker-compose.test.yml run --rm test_runner pnpm test -- --watch
-
+docker-compose -f docker-compose.test.yml run --rm test_runner pnpm exec jest --watchAll --runInBand
+docker-compose -f docker-compose.test.yml run --rm test_runner pnpm exec jest --runInBand --forceExit
 # 1. Destroy containers and volumes to wipe the bad RS config
 docker-compose -f docker-compose.test.yml down -v
 
@@ -19,6 +20,10 @@ docker-compose -f docker-compose.test.yml down -v
 docker-compose -f docker-compose.test.yml run --rm test_runner
 
 This is a smart approach. Building in distinct phases reduces cognitive load and prevents "spaghetti code."
+
+
+REDIS_URL=redis://localhost:6379 npx tsx src/flush.ts
+
 
 Here is the recommended **Phase Roadmap** for building the "Text-to-Learn" backend, structured by logical dependencies.
 

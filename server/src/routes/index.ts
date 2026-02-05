@@ -9,8 +9,9 @@ import { modelGateway } from "../services/ModelGateway";
 import { trackSignal } from "../controllers/AnalyticsController";
 import { getAppConfig } from "../controllers/configController";
 import subscriptionRoutes from "./subscriptionRoutes";
+
 const router = Router();
-// console.log("✅ LOADED: Main Router (routes/index.ts)"); // 👈 Add this
+
 router.use("/auth", checkJwt, authRoutes);
 router.use("/courses", checkJwt, attachUser, courseRoutes);
 router.use("/media", checkJwt, attachUser, mediaRoutes);

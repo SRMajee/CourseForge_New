@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 // ✅ 1. Set Global Timeout (60s)
 jest.setTimeout(60000);
 
-// ✅ 2. Mock Env first (Fixed: Added Cost Configs)
+// ✅ 2. Mock Env
 jest.mock("../../src/config/env", () => ({
   env: {
     NODE_ENV: "test",
@@ -28,7 +28,27 @@ jest.mock("../../src/config/env", () => ({
   },
 }));
 
-// ✅ 3. Mock External Services
+// ✅ 3. Mock Redis Client (FIXED: Added eval/watch/multi)
+jest.mock("../../src/config/redis", () => ({
+  redisClient: {
+    get: jest.fn(),
+    set: jest.fn(),
+    setex: jest.fn(),
+    del: jest.fn(),
+    expire: jest.fn(),
+    // 👇 Fixes "watch is not a function" and supports Lua
+    watch: jest.fn().mockResolvedValue("OK"),
+    unwatch: jest.fn().mockResolvedValue("OK"),
+    multi: jest.fn().mockImplementation(() => ({
+      decrby: jest.fn(),
+      exec: jest.fn().mockResolvedValue([[null, 50]]), // Simulates success
+    })),
+    // Support for Lua scripts
+    eval: jest.fn().mockResolvedValue([1, 50]), // [Success, Remaining]
+  },
+}));
+
+// ✅ 4. Mock External Services
 jest.mock("../../src/services/ModelGateway", () => ({
   modelGateway: {
     generateStructured: jest.fn().mockResolvedValue({
@@ -53,7 +73,19 @@ jest.mock("../../src/services/ClarificationService", () => ({
   },
 }));
 
-// ✅ 4. Mock Middleware
+jest.mock("../../src/queues/courseQueue", () => ({
+  courseQueue: { add: jest.fn().mockResolvedValue({ id: "job_123" }) },
+}));
+
+jest.mock("../../src/services/CodeExecutionService", () => ({
+  codeExecutionService: {
+    execute: jest
+      .fn()
+      .mockResolvedValue({ success: true, output: "Hello World" }),
+  },
+}));
+
+// ✅ 5. Mock Middleware
 import { attachUser } from "../../src/middleware/attachUser";
 import { checkJwt } from "../../src/middleware/authMiddleware";
 
@@ -81,7 +113,7 @@ jest.mock("../../src/middleware/attachUser", () => {
   };
 });
 
-// ✅ 5. Import Routes & Services
+// ✅ 6. Import Routes & App
 import courseRoutes from "../../src/routes/courseRoutes";
 import { User } from "../../src/models/User";
 import { Course } from "../../src/models/Course";
@@ -90,29 +122,6 @@ import { Lesson } from "../../src/models/Lesson";
 import { lessonService } from "../../src/services/lessonService";
 import { courseService } from "../../src/services/courseService";
 
-jest.mock("../../src/config/redis", () => ({
-  redisClient: {
-    get: jest.fn(),
-    set: jest.fn(),
-    setex: jest.fn(),
-    del: jest.fn(),
-    expire: jest.fn(),
-  },
-}));
-
-jest.mock("../../src/queues/courseQueue", () => ({
-  courseQueue: { add: jest.fn().mockResolvedValue({ id: "job_123" }) },
-}));
-
-jest.mock("../../src/services/CodeExecutionService", () => ({
-  codeExecutionService: {
-    execute: jest
-      .fn()
-      .mockResolvedValue({ success: true, output: "Hello World" }),
-  },
-}));
-
-// ✅ 6. Setup App
 const app = express();
 app.use(express.json());
 app.use(checkJwt);
@@ -125,7 +134,8 @@ describe("Course Routes Integration", () => {
   beforeAll(async () => {
     const uri =
       process.env.MONGO_URI || "mongodb://mongo:27017/courseforge_test";
-    await mongoose.connect(uri);
+    // Increase connection timeout logic
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
   }, 60000);
 
   afterAll(async () => {
@@ -149,22 +159,28 @@ describe("Course Routes Integration", () => {
     userId = user._id.toString();
   });
 
-  // ---------------------------------------------------------
-  // Tests
-  // ---------------------------------------------------------
   describe("POST /courses/outline", () => {
     it("should accept a valid prompt and queue the job", async () => {
       const response = await request(app)
         .post("/courses/outline")
         .send({ topic: "Learn React" });
 
+      // Expect 202 because Redis mock now supports the deduction call
       expect(response.status).toBe(202);
       expect(response.body.status).toBe("queued");
     });
 
     it("should return 402 if user has insufficient credits", async () => {
-      // ✅ Set credits to 0. Since COST_CREATE_COURSE is 50 in mock, 0 < 50 is true.
       await User.updateOne({ _id: userId }, { credits: 0 });
+
+      // Update mock to return failure for this test case
+      const { redisClient } = require("../../src/config/redis");
+      redisClient.eval.mockResolvedValueOnce([0, 0]); // Lua failure
+      redisClient.multi.mockReturnValueOnce({
+        // Watch/Multi failure
+        decrby: jest.fn(),
+        exec: jest.fn().mockResolvedValue([[new Error("Fail"), null]]),
+      });
 
       const response = await request(app)
         .post("/courses/outline")
@@ -173,6 +189,8 @@ describe("Course Routes Integration", () => {
       expect(response.status).toBe(402);
     });
   });
+
+  // ... (Keep existing tests)
 
   describe("GET /courses/:id", () => {
     it("should retrieve the correct course object", async () => {

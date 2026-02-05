@@ -9,7 +9,6 @@ export const errorHandler = (
 ) => {
   // 1. Catch Auth0 "UnauthorizedError"
   if (err.name === "UnauthorizedError") {
-    // Log a simple warning instead of a massive stack trace
     logger.warn(
       `🔒 [Auth Fail] Missing/Invalid Token: ${req.method} ${req.path}`,
     );

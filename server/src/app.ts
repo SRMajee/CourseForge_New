@@ -6,25 +6,45 @@ import { env } from "./config/env";
 import routes from "./routes/index";
 import { webhookRouter } from "./routes/paymentRoutes";
 import { errorHandler } from "./middleware/validation";
-
+import compression from "compression";
 const app: Express = express();
 
-// 1. Global Middleware
-app.use(helmet()); // Security Headers
+// ==========================================
+// 1. Global Middleware (Security & Optimization)
+// ==========================================
+app.use(helmet());
 app.use(
   cors({
-    origin: env.CLIENT_URL || "http://localhost:5173", // Frontend URL
+    origin: env.CLIENT_URL || "http://localhost:5173",
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   }),
 );
+// ==========================================
+// 1. Response Compression
+// ==========================================
+app.use(
+  compression({
+    level: 6,
+    threshold: 10 * 1000,
+    filter: (req, res) => {
+      if (req.headers["x-no-compression"]) return false;
+      return compression.filter(req, res);
+    },
+  }),
+);
 
-// 2. Webhook Handling (Must be before JSON parsing)
+app.use(morgan("tiny"));
+
+// ==========================================
+// 2. Webhook Handling
+// ==========================================
 app.use("/api/v1/payment", webhookRouter);
 
-// 3. Body Parsing (Skipping for webhooks handled above if needed,
-// but usually webhookRouter handles its own body parsing if using raw)
+// ==========================================
+// 3. Body Parsing
+// ==========================================
 app.use((req, res, next) => {
   if (req.originalUrl.includes("/api/v1/payment/webhook")) {
     next();
@@ -33,25 +53,18 @@ app.use((req, res, next) => {
   }
 });
 
-// 4. Debug Logger (Optional)
-app.use((req, res, next) => {
-  if (req.method === "POST" || req.method === "PUT") {
-    // console.log(`📦 [${req.method}] ${req.url}`);
-  }
-  next();
-});
-
-app.use(morgan("tiny")); // Request logging
-
-// 5. Health Check
+// ==========================================
+// 4. Routes
+// ==========================================
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", env: env.NODE_ENV });
 });
 
-// 6. API Routes
 app.use("/api/v1", routes);
 
-// 7. 404 Handler
+// ==========================================
+// 5. Error Handling
+// ==========================================
 app.use(errorHandler);
 
 export default app;

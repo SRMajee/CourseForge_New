@@ -1,6 +1,6 @@
 import { Response, NextFunction } from "express";
 import { User } from "../models/User";
-import { redisClient } from "../config/redis"; // Ensure this matches your redis config path
+import { redisClient } from "../config/redis";
 import logger from "../utils/logger";
 
 declare global {
@@ -26,20 +26,18 @@ export const attachUser = async (
     const cacheKey = `auth_session:${auth0Id}`;
 
     // -------------------------------------------------------
-    // 🚀 OPTIMIZATION: Check Redis Cache First (~2ms)
+    // OPTIMIZATION: Check Redis Cache First (~2ms)
     // -------------------------------------------------------
     const cachedUser = await redisClient.get(cacheKey);
 
     if (cachedUser) {
-      // ✅ HIT: Skip MongoDB entirely
       req.user = JSON.parse(cachedUser);
       return next();
     }
 
     // -------------------------------------------------------
-    // 🐢 SLOW PATH: Fetch from Mongo (Only on Cache Miss)
+    // Fetch from Mongo (Only on Cache Miss)
     // -------------------------------------------------------
-    // We select only necessary fields to keep the object light
     const user = await User.findOne({ auth0Id }).select("_id email auth0Id");
 
     if (!user) {
@@ -47,8 +45,6 @@ export const attachUser = async (
       return res.status(401).json({ message: "User not synced" });
     }
 
-    // Convert Mongoose Doc to Plain Object
-    // const sessionUser = user.toObject();
     const sessionUser = {
       _id: user._id.toString(),
       email: user.email,
@@ -56,7 +52,6 @@ export const attachUser = async (
     };
 
     // 💾 SAVE TO CACHE (Expires in 1 hour)
-    // This ensures subsequent requests use the Fast Path
     await redisClient.setex(cacheKey, 86400, JSON.stringify(sessionUser));
     req.user = sessionUser;
     next();

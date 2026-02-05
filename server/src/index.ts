@@ -4,12 +4,13 @@ import { env } from "./config/env";
 import logger from "./utils/logger";
 import { connectDB } from "./config/db";
 import { socketService } from "./services/socketService";
+import { setupQueueEvents } from "./listeners/queueListener";
 
 const startServer = async () => {
   try {
     // 1. Connect to Database
     await connectDB();
-
+    setupQueueEvents();
     // 2. Create HTTP Server (Wraps Express App)
     // Essential for Socket.io to attach correctly
     const server = http.createServer(app);

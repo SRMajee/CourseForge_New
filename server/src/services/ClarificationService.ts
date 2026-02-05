@@ -31,7 +31,6 @@ class ClarificationService {
     `;
 
     try {
-      // ✅ FIX: Actually use the systemPrompt here
       const result = await modelGateway.generateStructured(
         `${systemPrompt}\n\nTopic: "${topic}"`,
         clarificationSchema,
@@ -44,7 +43,7 @@ class ClarificationService {
         result.isAmbiguous = true;
       }
 
-      // 🛡️ INJECT "SKIP" OPTIONS
+      // INJECT "SKIP" OPTIONS
       // We manually add this so the user can explicitly choose to skip specific questions
       if (result.questions) {
         result.questions.forEach((q: ClarificationResponse['questions'][number]) => {

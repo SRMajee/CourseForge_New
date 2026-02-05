@@ -1,13 +1,12 @@
 import { tavily } from "@tavily/core";
 import logger from "../utils/logger";
 import { env } from "../config/env";
-import { modelGateway, TaskTier } from "./ModelGateway"; // 👈 Import Gateway
+import { modelGateway, TaskTier } from "./ModelGateway";
 
 class ResearchService {
   private client;
 
   constructor() {
-    // Initialize Tavily with the API Key from env
     this.client = tavily({ apiKey: env.TAVILY_API_KEY });
   }
 

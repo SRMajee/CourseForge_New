@@ -34,10 +34,10 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Dashboard() {
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const navigate = useNavigate();
   const { mutate, isPending } = useCreateCourse();
-  const { connect, disconnect } = useSocketStore();
+  const { connect, disconnect, socket } = useSocketStore();
   const [viewState, setViewState] = useState<
     "idle" | "clarifying" | "generating"
   >("idle");
@@ -46,13 +46,31 @@ export default function Dashboard() {
 
   // ✅ Lifted Mode State
   const [mode, setMode] = useState<"standard" | "pro">("standard");
+  const userId = user?._id;
   useEffect(() => {
-    if (user?._id) {
-      connect(user._id);
+    if (!socket) return;
+
+    const handleUserUpdate = (updates: any) => {
+      // If the backend sends { hasUsedProTrial: true }, we merge it into the user state
+      if (user && setUser) {
+        // console.log("🔄 Syncing User State:", updates);
+        setUser({ ...user, ...updates });
+      }
+    };
+
+    socket.on("user_updated", handleUserUpdate);
+
+    return () => {
+      socket.off("user_updated", handleUserUpdate);
+    };
+  }, [socket, user, setUser]);
+  useEffect(() => {
+    if (userId) {
+      // Console log to prove it only runs once now
+      // console.log("🔌 Dashboard: Connecting Socket for", userId);
+      connect(userId);
     }
-    // Cleanup on unmount (optional, keeps connection alive for nav)
-    // return () => disconnect();
-  }, [user, connect]);
+  }, [userId, connect]); // 👈 Changed [user] to [userId]
   // Auto-set mode based on user preference or plan
   useEffect(() => {
     if (user?.planType === "PRO" || user?.subscriptionStatus === "active") {

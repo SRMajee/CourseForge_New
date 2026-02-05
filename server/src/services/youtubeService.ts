@@ -8,12 +8,16 @@ export class YouTubeService {
   constructor() {
     this.youtube = google.youtube({
       version: "v3",
-      auth: env.YOUTUBE_API_KEY, // Ensure this is set in your .env
+      auth: env.YOUTUBE_API_KEY,
     });
   }
 
   /**
-   * Searches for a single relevant educational video
+   * Search YouTube for videos matching the query
+   * Returns the top result with videoId, title, thumbnail, and channel
+   * If no results or error (e.g. quota exceeded), returns null
+   * @param query Search query string
+   * @return Object | null Video details or null if not found/error
    */
   async searchVideo(query: string) {
     try {
@@ -44,7 +48,7 @@ export class YouTubeService {
         channel: item.snippet?.channelTitle,
       };
     } catch (error: any) {
-      // ✅ FIX: Gracefully handle Quota Limits
+      //  Gracefully handle Quota Limits
       if (error.message?.includes("quota") || error.code === 403) {
         logger.warn(
           `⚠️ YouTube API Quota Exceeded. Bypassing video search for: "${query}"`,
