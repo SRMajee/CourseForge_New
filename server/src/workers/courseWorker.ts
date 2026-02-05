@@ -61,7 +61,6 @@ export const courseWorker = new Worker<CourseGenerationJob>(
           return await courseService.generateCourse(userId, topic, {
             userAnswers,
             mode,
-            paymentContext: metadata?.payment,
           });
         }
         throw new Error(`Unknown action: ${action}`);
