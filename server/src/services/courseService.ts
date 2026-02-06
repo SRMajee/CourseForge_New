@@ -6,7 +6,7 @@ import { User } from "../models/User";
 import logger from "../utils/logger";
 import { v2 as cloudinary } from "cloudinary";
 import { CREDIT_COSTS } from "../config/credits"; // 👈 Import Config
-import { modelGateway, TaskTier } from "./ModelGateway";
+import { modelGateway, TaskTier } from "../ai/services/ModelGateway";
 import { semanticCache } from "../utils/semanticCache";
 import {
   lessonResponseSchema,
@@ -19,6 +19,7 @@ import { imageService } from "./imageService";
 import { getVectorStore } from "./vectorStore";
 import { youtubeService } from "./youtubeService";
 import { codeExecutionService } from "./CodeExecutionService";
+import { PROMPTS } from "../ai/prompts/prompts";
 
 export class ClarificationNeededError extends Error {
   public data: any;
@@ -105,7 +106,10 @@ export class CourseService {
       requestedMode === "pro"
         ? TaskTier.LOGIC_REASONING
         : TaskTier.FAST_UTILITY;
+    const model = modelGateway.getChatModel(planningTier);
 
+    const structuredLlm = model.withStructuredOutput(outlineSchema);
+    const chain = PROMPTS.COURSE_OUTLINE.pipe(structuredLlm);
     logger.info(
       `👤 User ${userId} | Mode: ${requestedMode.toUpperCase()} | Tier: ${planningTier} | Cost: ${cost}`,
     );
@@ -175,42 +179,12 @@ export class CourseService {
             } catch (error) {
               logger.warn("⚠️ [RAG] Skipped:", error);
             }
-            const systemPrompt = `
-      You are an expert curriculum designer.
-      
-      STEP 1: THOUGHT PROCESS (_thought)
-      First, analyze the user's topic and preferences. 
-      - Plan the logical flow: Beginner -> Intermediate -> Advanced.
-      - Ensure prerequisites are covered early.
-      - Define specific learning goals for each module.
-      - Explain your reasoning in the '_thought' field.
-      
-      STEP 2: JSON GENERATION
-      Based on your thoughts, generate the strict JSON syllabus.
-      
-      ${scopingContext ? `🔥 CRITICAL USER PREFERENCES:\n${scopingContext}\n(You MUST tailor the content to match these preferences strictly.)\n` : ""}
-      
-      ${webContext ? `WEB CONTEXT:\n${webContext}\n` : ""}
-      ${ragContext ? `📚 INTERNAL KNOWLEDGE BASE (Prioritize this info):\n${ragContext}\n` : ""}
-      Create a detailed course syllabus for: "${topic}".
-
-      EXAMPLE OUTPUT FORMAT:
-      {
-        "_thought": "User wants a Data Science course. I will start with Pandas basics, then move to Visualization...",
-        "title": "Course Name",
-        "description": "Brief summary...",
-        "tags": ["Tag1", "Tag2"],
-        "modules": [
-          { "title": "Module 1", "lessons": [{ "title": "Lesson 1.1" }] }
-        ]
-      }
-    `;
-
-            const result = await modelGateway.generateStructured(
-              systemPrompt,
-              outlineSchema,
-              planningTier,
-            );
+       const result = await chain.invoke({
+              topic: topic,
+              ragContext: ragContext || "", // Handle empty context safely
+              scopingContext: scopingContext || "None",
+              webContext: webContext || "None",
+            });
 
             // Fire-and-Forget Cache Write
             semanticCache
@@ -282,12 +256,6 @@ export class CourseService {
     });
   }
 
-  /**
-   * TRANSACTIONAL: Creates a Course from AI Syllabus & Deducts Credits
-   * (Now called internally by generateCourse)
-   */
-
-  // --- READ / UTILITY METHODS ---
 
   async getCourseById(courseId: Object | string) {
     return await Course.findById(courseId).populate({
@@ -309,43 +277,19 @@ export class CourseService {
     const cost = mode === "pro" ? COST_PRO : COST;
     await this.validateBalance(userId, cost);
     await creditService.deductCredits(userId, cost);
+    const tier =
+      mode === "pro" ? TaskTier.LOGIC_REASONING : TaskTier.FAST_UTILITY;
+    const model = modelGateway.getChatModel(tier);
+
+    const structuredLlm = model.withStructuredOutput(outlineSchema);
+    const chain = PROMPTS.REGENERATE_OUTLINE.pipe(structuredLlm);
 
     try {
-      const tier =
-        mode === "pro" ? TaskTier.LOGIC_REASONING : TaskTier.FAST_UTILITY;
-
-      const systemPrompt = `
-        You are an expert curriculum designer modifying an existing course based on user feedback.
-        CURRENT COURSE: "${course.title}"
-        DESCRIPTION: ${course.description}
-        USER INSTRUCTION: "${instruction}"
-        
-        TASK:
-        1. Analyze the user's feedback.
-        2. Restructure the course modules and lessons to address the feedback.
-        3. Output a VALID JSON object matching the schema.
-        
-        CRITICAL: 
-        - You MUST regenerate 3-5 tags based on the new structure.
-        - Ensure tags are relevant and not empty.
-        
-        REQUIRED JSON STRUCTURE:
-        {
-          "_thought": "Reasoning...",
-          "title": "Updated Title",
-          "description": "Updated Description",
-          "tags": ["tag1", "tag2"],
-          "modules": [
-            { "title": "Module 1", "lessons": ["Lesson 1"] }
-          ]
-        }
-      `;
-
-      const newSyllabus = await modelGateway.generateStructured(
-        systemPrompt,
-        outlineSchema,
-        tier,
-      );
+     const newSyllabus = await chain.invoke({
+        instruction: instruction || "Make it better",
+        title: course?.title || "Untitled Course",
+        description: course?.description || "No description",
+      });
 
       // ✅ Pass 'instruction' to archive the OLD version before overwriting
       const updatedCourse = await this.saveCourseToDb(
@@ -379,48 +323,22 @@ export class CourseService {
     await this.validateBalance(userId, cost);
     await creditService.deductCredits(userId, cost);
 
+    const tier =
+      mode === "pro" ? TaskTier.CREATIVE_WRITING : TaskTier.FAST_UTILITY;
+    const model = modelGateway.getChatModel(tier);
+
+    const structuredLlm = model.withStructuredOutput(lessonResponseSchema);
+    const chain = PROMPTS.REFINE_LESSON.pipe(structuredLlm);
+
     try {
-      const tier =
-        mode === "pro" ? TaskTier.CREATIVE_WRITING : TaskTier.FAST_UTILITY;
-      const prompt = `
-        You are an expert educational content creator.
-        
-        TASK: Refine this lesson content based on the instruction.
-        LESSON TITLE: "${lesson.title}"
-        USER INSTRUCTION: "${instruction}"
-        
-        OUTPUT REQUIREMENT:
-        Generate the strict JSON content array based on your plan.
+  
+      let refinedLesson = await chain.invoke({
+        instruction: instruction,
 
-      ALLOWED BLOCK TYPES:
-      - { "type": "heading", "text": "..." }
-      - { "type": "paragraph", "text": "..." }
-      - { "type": "code", "language": "javascript", "code": "..." }
-      - { "type": "mcq", "question": "...", "options": ["A", "B"], "answer": 0, "explanation": "..." }
-      - { "type": "video", "query": "exact search term for youtube" } 
-      - { "type": "link", "title": "...", "url": "https://..." }
- 
-          EXAMPLE OUTPUT:
-      {
-        "_thought": "I will explain Loops using a real-world analogy of a factory line...",
-        "title": "Lesson Title",
-        "objectives": ["Obj 1", "Obj 2"],
-        "content": [
-          { "type": "heading", "text": "Introduction" },
-          { "type": "paragraph", "text": "Concept explanation..." },
-          { "type": "code", "language": "python", "code": "print('Hello')" },
-          { "type": "video", "query": "Python loops tutorial" },
-          { "type": "mcq", "question": "What is X?", "options": ["A", "B"], "answer": 0, "explanation": "Reason." }
-          { "type": "link", "title": "...", "url": "https://..." }
-        ]
-      }
-      `;
-
-      let refinedLesson = await modelGateway.generateStructured(
-        prompt,
-        lessonResponseSchema,
-        tier,
-      );
+        title: lesson.title,
+        content: lesson.content,
+        objectives: lesson.objectives,
+      });
       if (refinedLesson.content && Array.isArray(refinedLesson.content)) {
         logger.info("🎥 Enriching lesson with YouTube content...");
 

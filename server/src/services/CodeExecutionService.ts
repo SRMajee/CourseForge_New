@@ -1,10 +1,11 @@
 // ✅ FIX 1: Use Default Import (fixes "No exported member" error)
 import CodeInterpreter from "@e2b/code-interpreter";
-import { modelGateway, TaskTier } from "./ModelGateway";
+import { modelGateway, TaskTier } from "../ai/services/ModelGateway";
 import logger from "../utils/logger";
 import { z } from "zod";
 import { env } from "../config/env";
-import axios from 'axios';
+import axios from "axios";
+import { PROMPTS } from "../ai/prompts/prompts";
 
 // Schema for the AI Fixer response
 const fixedCodeSchema = z.object({
@@ -141,29 +142,32 @@ export class CodeExecutionService {
 
           // C. The "Fix" Agent: Feed Error back to LLM
           logger.info("🔧 [Sandbox] Requesting AI Fix...");
-          const fixPrompt = `
-            You are a Python Expert debugging code.
-            
-            THE CODE:
-            \`\`\`python
-            ${currentCode}
-            \`\`\`
-            
-            THE ERROR:
-            ${errorMsg}
-            
-            TASK:
-            Fix the code so it runs correctly in a standard Python notebook environment.
-            Return ONLY the JSON structure.
-          `;
+          // const fixPrompt = `
+          //   You are a Python Expert debugging code.
+
+          //   THE CODE:
+          //   \`\`\`python
+          //   ${currentCode}
+          //   \`\`\`
+
+          //   THE ERROR:
+          //   ${errorMsg}
+
+          //   TASK:
+          //   Fix the code so it runs correctly in a standard Python notebook environment.
+          //   Return ONLY the JSON structure.
+          // `;
+          const model = modelGateway.getChatModel(TaskTier.FAST_UTILITY);
+
+          const structuredLlm = model.withStructuredOutput(fixedCodeSchema);
+          const chain = PROMPTS.CODE_EXECUTION.pipe(structuredLlm);
 
           try {
             // Use your FAST_UTILITY Tier (Llama 3 via Groq) for speed
-            const result = await modelGateway.generateStructured(
-              fixPrompt,
-              fixedCodeSchema,
-              TaskTier.FAST_UTILITY,
-            );
+            const result = (await chain.invoke({
+              currentCode: currentCode,
+              errorMsg: errorMsg,
+            })) as z.infer<typeof fixedCodeSchema>;
 
             currentCode = result.fixed_code;
             logger.info("✅ [Sandbox] AI provided a fix. Retrying...");

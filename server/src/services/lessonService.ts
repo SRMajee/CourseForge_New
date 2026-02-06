@@ -10,7 +10,7 @@ import {
   SUPPORTED_LANGUAGES,
 } from "./languageService";
 import { CREDIT_COSTS } from "../config/credits"; // 👈 Import Config
-import { modelGateway, TaskTier } from "./ModelGateway";
+import { modelGateway, TaskTier } from "../ai/services/ModelGateway";
 import { lessonResponseSchema } from "../ai/parsers/courseSchema";
 import { semanticCache } from "../utils/semanticCache";
 import { youtubeService } from "./youtubeService";
@@ -20,6 +20,7 @@ import { creditService } from "./creditService";
 import { socketService } from "./socketService";
 import { getVectorStore } from "./vectorStore";
 import { redisClient } from "../config/redis";
+import { PROMPTS } from "../ai/prompts/prompts";
 export class LessonService {
   /**
    * ✅ VALIDATION HELPER
@@ -119,7 +120,14 @@ export class LessonService {
     const moduleTitle = module?.title || "General Module";
 
     logger.info(`Processing lesson: ${lesson.title}`);
+    const tier =
+      lesson.generationMode === "pro"
+        ? TaskTier.LOGIC_REASONING
+        : TaskTier.CREATIVE_WRITING;
+    const model = modelGateway.getChatModel(tier);
 
+    const structuredLlm = model.withStructuredOutput(lessonResponseSchema);
+    const chain = PROMPTS.LESSON_CONTENT.pipe(structuredLlm);
     // ---------------------------------------------------------
     // ⚡ STEP 4: CHECK SEMANTIC CACHE
     // ---------------------------------------------------------
@@ -146,62 +154,11 @@ export class LessonService {
       } catch (err) {
         logger.warn("⚠️ [RAG] Vector Search failed:", err);
       }
-      // ---------------------------------------------------------
-      // 🧠 AI GENERATION (One-Shot with Strict Structure)
-      // ---------------------------------------------------------
-      const systemPrompt = `
-      You are an interactive course creator.
-      ${ragContext ? `📚 INTERNAL KNOWLEDGE BASE (Use this content primarily):\n${ragContext}\n` : ""}
-      STEP 1: CONTENT PLANNING (_thought)
-      In the '_thought' field, outline the lesson flow.
-      - Start with a Hook/Objective.
-      - Explain the Concept clearly.
-      - Provide a Code Example (if technical).
-      - Search for a Video (using 'query').
-      - Provide a Link for further reading.
-      - End with a Knowledge Check (MCQ).
-      
-      STEP 2: JSON GENERATION
-      Generate the strict JSON content array based on your plan.
 
-      ALLOWED BLOCK TYPES:
-      - { "type": "heading", "text": "..." }
-      - { "type": "paragraph", "text": "..." }
-      - { "type": "code", "language": "javascript", "code": "..." }
-      - { "type": "mcq", "question": "...", "options": ["A", "B"], "answer": 0, "explanation": "..." }
-      - { "type": "video", "query": "exact search term for youtube" } 
-      - { "type": "link", "title": "...", "url": "https://..." }
-
-      EXAMPLE OUTPUT:
-      {
-        "_thought": "I will explain Loops using a real-world analogy of a factory line...",
-        "title": "Lesson Title",
-        "objectives": ["Obj 1", "Obj 2"],
-        "content": [
-          { "type": "heading", "text": "Introduction" },
-          { "type": "paragraph", "text": "Concept explanation..." },
-          { "type": "code", "language": "python", "code": "print('Hello')" },
-          { "type": "video", "query": "Python loops tutorial" },
-          { "type": "mcq", "question": "What is X?", "options": ["A", "B"], "answer": 0, "explanation": "Reason." }
-          { "type": "link", "title": "...", "url": "https://..." }
-        ]
-      }
-      `;
-
-      const userPrompt = `
-      Create a detailed lesson for: "${lesson.title}".
-      Context: Module "${moduleTitle}" in Course "${courseTitle}".
-      `;
-      const tier =
-        lesson.generationMode === "pro"
-          ? TaskTier.LOGIC_REASONING
-          : TaskTier.CREATIVE_WRITING;
       // Call AI
-      structuredLesson = await modelGateway.generateStructured(
-        `${systemPrompt}\n\nUSER REQUEST: ${userPrompt}`,
-        lessonResponseSchema,
-        tier,
-      );
+      structuredLesson = await chain.invoke({
+        topic: lesson?.title || "General Topic",
+      });
 
       // ---------------------------------------------------------
       // 🎥 YOUTUBE ENRICHMENT & LINK SANITIZER

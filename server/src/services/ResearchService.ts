@@ -1,7 +1,9 @@
 import { tavily } from "@tavily/core";
 import logger from "../utils/logger";
 import { env } from "../config/env";
-import { modelGateway, TaskTier } from "./ModelGateway";
+import { modelGateway, TaskTier } from "../ai/services/ModelGateway";
+import { PROMPTS } from "../ai/prompts/prompts";
+import z from "zod";
 
 class ResearchService {
   private client;
@@ -37,31 +39,36 @@ class ResearchService {
 
       // 2. The Sanitizer (Clean Data)
       // We ask the fast model to filter out noise (ads, SEO fluff)
-      const summaryPrompt = `
-        You are a technical researcher.
-        Analyze the following search results about "${topic}".
-        
-        Extract ONLY:
-        1. Core libraries/technologies mentioned.
-        2. Key concepts and best practices.
-        3. One real-world usage example.
-        
-        Constraints:
-        - Keep it under 200 words.
-        - Do not use markdown formatting like bolding, just plain text.
-        - Ignore irrelevant SEO content or ads.
-        
-        RAW SEARCH DATA:
-        ${response.answer ? `Tavily Summary: ${response.answer}\n` : ""}
-        ${rawContext}
-      `;
+      // const summaryPrompt = `
+      //   You are a technical researcher.
+      //   Analyze the following search results about "${topic}".
+
+      //   Extract ONLY:
+      //   1. Core libraries/technologies mentioned.
+      //   2. Key concepts and best practices.
+      //   3. One real-world usage example.
+
+      //   Constraints:
+      //   - Keep it under 200 words.
+      //   - Do not use markdown formatting like bolding, just plain text.
+      //   - Ignore irrelevant SEO content or ads.
+
+      //   RAW SEARCH DATA:
+      //   ${response.answer ? `Tavily Summary: ${response.answer}\n` : ""}
+      //   ${rawContext}
+      // `;
+      const model = modelGateway.getChatModel(TaskTier.FAST_UTILITY);
+
+      const structuredLlm = model.withStructuredOutput(
+        z.string().describe("Clean, concise summary of the web context"),
+      );
+      const chain = PROMPTS.RESEARCH.pipe(structuredLlm);
 
       // 3. Execute with Cheap Model (Llama 8B or Gemini Flash)
-      const cleanSummary = await modelGateway.generate(
-        summaryPrompt,
-        TaskTier.FAST_UTILITY,
-        "Output clean, factual text summaries only.",
-      );
+      const cleanSummary = (await chain.invoke({
+        topic: topic,
+        webContext: rawContext,
+      })) as unknown as string;
 
       logger.info("✅ [Research] Context sanitized and summarized.");
 

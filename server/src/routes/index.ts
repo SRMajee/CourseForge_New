@@ -5,7 +5,7 @@ import mediaRoutes from "./mediaRoutes";
 import { checkJwt } from "../middleware/authMiddleware";
 import { attachUser } from "../middleware/attachUser";
 import paymentRoutes from "./paymentRoutes";
-import { modelGateway } from "../services/ModelGateway";
+import { modelGateway } from "../ai/services/ModelGateway";
 import { trackSignal } from "../controllers/AnalyticsController";
 import { getAppConfig } from "../controllers/configController";
 import subscriptionRoutes from "./subscriptionRoutes";

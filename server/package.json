@@ -21,6 +21,7 @@
     "@google/generative-ai": "^0.24.1",
     "@langchain/core": "latest",
     "@langchain/google-genai": "latest",
+    "@langchain/groq": "^1.0.4",
     "@langchain/mongodb": "^1.1.0",
     "@langchain/openai": "latest",
     "@socket.io/redis-adapter": "^8.3.0",

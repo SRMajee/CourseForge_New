@@ -23,6 +23,9 @@ importers:
       '@langchain/google-genai':
         specifier: latest
         version: 2.1.13(@langchain/core@1.1.17(openai@6.16.0(ws@8.18.3)(zod@3.25.76)))
+      '@langchain/groq':
+        specifier: ^1.0.4
+        version: 1.0.4(@langchain/core@1.1.17(openai@6.16.0(ws@8.18.3)(zod@3.25.76)))
       '@langchain/mongodb':
         specifier: ^1.1.0
         version: 1.1.0(@langchain/core@1.1.17(openai@6.16.0(ws@8.18.3)(zod@3.25.76)))
@@ -734,6 +737,12 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       '@langchain/core': 1.1.17
+
+  '@langchain/groq@1.0.4':
+    resolution: {integrity: sha512-FqY9m1rykq46/B3P20rpZzd9pbt01sVsqRJvb5i21fIlYTvgxgVbwxVvqijyZJc4YA982Fe30chjGgiOEdCSsg==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@langchain/core': ^1.0.0
 
   '@langchain/langgraph-checkpoint@1.0.0':
     resolution: {integrity: sha512-xrclBGvNCXDmi0Nz28t3vjpxSH6UYx6w5XAXSiiB1WEdc2xD2iY/a913I3x3a31XpInUW/GGfXXfePfaghV54A==}
@@ -1955,6 +1964,9 @@ packages:
 
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
+
+  groq-sdk@0.19.0:
+    resolution: {integrity: sha512-vdh5h7ORvwvOvutA80dKF81b0gPWHxu6K/GOJBOM0n6p6CSqAVLhFfeS79Ef0j/yCycDR09jqY7jkYz9dLiS6w==}
 
   groq-sdk@0.37.0:
     resolution: {integrity: sha512-lT72pcT8b/X5XrzdKf+rWVzUGW1OQSKESmL8fFN5cTbsf02gq6oFam4SVeNtzELt9cYE2Pt3pdGgSImuTbHFDg==}
@@ -4070,6 +4082,13 @@ snapshots:
       '@langchain/core': 1.1.17(openai@6.16.0(ws@8.18.3)(zod@3.25.76))
       uuid: 11.1.0
 
+  '@langchain/groq@1.0.4(@langchain/core@1.1.17(openai@6.16.0(ws@8.18.3)(zod@3.25.76)))':
+    dependencies:
+      '@langchain/core': 1.1.17(openai@6.16.0(ws@8.18.3)(zod@3.25.76))
+      groq-sdk: 0.19.0
+    transitivePeerDependencies:
+      - encoding
+
   '@langchain/langgraph-checkpoint@1.0.0(@langchain/core@1.1.17(openai@6.16.0(ws@8.18.3)(zod@3.25.76)))':
     dependencies:
       '@langchain/core': 1.1.17(openai@6.16.0(ws@8.18.3)(zod@3.25.76))
@@ -5435,6 +5454,18 @@ snapshots:
   gopd@1.2.0: {}
 
   graceful-fs@4.2.11: {}
+
+  groq-sdk@0.19.0:
+    dependencies:
+      '@types/node': 18.19.130
+      '@types/node-fetch': 2.6.13
+      abort-controller: 3.0.0
+      agentkeepalive: 4.6.0
+      form-data-encoder: 1.7.2
+      formdata-node: 4.4.1
+      node-fetch: 2.7.0
+    transitivePeerDependencies:
+      - encoding
 
   groq-sdk@0.37.0:
     dependencies:

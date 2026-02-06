@@ -1,41 +1,22 @@
-import { modelGateway, TaskTier } from "./ModelGateway";
+import { modelGateway, TaskTier } from "../ai/services/ModelGateway";
 import {
   clarificationSchema,
   ClarificationResponse,
 } from "../ai/parsers/clarificationSchema";
 import logger from "../utils/logger";
+import { PROMPTS } from "../ai/prompts/prompts";
 
 class ClarificationService {
   async analyzeTopic(topic: string): Promise<ClarificationResponse> {
-    const systemPrompt = `
-      You are a Curriculum Architect.
-      The user wants to learn: "${topic}"
-
-      TASK:
-      Generate 3-4 specific clarifying questions to tailor the course content.
-      The questions must be **SPECIFIC** to "${topic}".
-      
-      OUTPUT JSON (Strict):
-      {
-        "isAmbiguous": true,
-        "reason": "I need to know your specific focus within ${topic}.",
-        "questions": [
-          { 
-            "id": "q1", 
-            "text": "Question text...", 
-            "type": "choice", 
-            "options": ["Option A", "Option B", "Option C"] 
-          }
-        ]
-      }
-    `;
-
+    // MOVED INSIDE TRY/CATCH for safety
     try {
-      const result = await modelGateway.generateStructured(
-        `${systemPrompt}\n\nTopic: "${topic}"`,
-        clarificationSchema,
-        TaskTier.FAST_UTILITY,
-      );
+      const model = modelGateway.getChatModel(TaskTier.FAST_UTILITY);
+      const structuredLlm = model.withStructuredOutput(clarificationSchema);
+      const chain = PROMPTS.CLARIFICATION.pipe(structuredLlm);
+
+      const result = (await chain.invoke({
+        topic: topic,
+      })) as ClarificationResponse;
 
       // Force ambiguity for short topics
       const wordCount = topic.trim().split(/\s+/).length;
@@ -44,16 +25,17 @@ class ClarificationService {
       }
 
       // INJECT "SKIP" OPTIONS
-      // We manually add this so the user can explicitly choose to skip specific questions
       if (result.questions) {
-        result.questions.forEach((q: ClarificationResponse['questions'][number]) => {
-          if (
-            q.type === "choice" &&
-            !q.options.some((o: string) => o.toLowerCase().includes("skip"))
-          ) {
-            q.options.push("Not sure / Decide for me");
-          }
-        });
+        result.questions.forEach(
+          (q: ClarificationResponse["questions"][number]) => {
+            if (
+              q.type === "choice" &&
+              !q.options.some((o: string) => o.toLowerCase().includes("skip"))
+            ) {
+              q.options.push("Not sure / Decide for me");
+            }
+          },
+        );
       }
 
       if (
@@ -64,11 +46,14 @@ class ClarificationService {
         return result;
       }
 
-      throw new Error("Ambiguous but no questions generated.");
-    } catch (error) {
-      logger.warn(
-        `⚠️ Clarification AI failed for "${topic}". Using Smart Fallback.`,
-      );
+      // If we got here, it's ambiguous but has no questions?
+      // Just return it (the controller handles non-ambiguous cases)
+      return result;
+    } catch (error: any) {
+      // LOG THE ACTUAL ERROR
+      logger.error(`❌ Clarification AI Failed for "${topic}":`, error);
+
+      logger.warn(`⚠️ Using Smart Fallback for "${topic}".`);
 
       return {
         isAmbiguous: true,
