@@ -1,4 +1,4 @@
-// ✅ 1. Mock Env FIRST (Prevents process.exit(1) crash)
+// ✅ 1. Mock Env FIRST to prevent process.exit(1)
 jest.mock("../../src/config/env", () => ({
   env: {
     NODE_ENV: "test",
@@ -19,6 +19,7 @@ jest.mock("../../src/utils/logger", () => ({
 // ✅ 3. Mock Model Gateway
 jest.mock("../../src/ai/services/ModelGateway");
 
+// ✅ 4. Import System Under Test (SUT) AFTER mocks
 import { clarificationService } from "../../src/services/ClarificationService";
 import { modelGateway } from "../../src/ai/services/ModelGateway";
 import { PROMPTS } from "../../src/ai/prompts/prompts";
