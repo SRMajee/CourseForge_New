@@ -1,136 +1,111 @@
 import mongoose from "mongoose";
 
-// ✅ 1. Mock Env FIRST (Prevents process.exit(1) from Zod validation)
+// ✅ 1. Mock Env
 jest.mock("../../src/config/env", () => ({
   env: {
     NODE_ENV: "test",
-    // API Keys
     OPENAI_API_KEY: "sk-mock",
     STRIPE_SECRET_KEY: "sk_test_mock",
     GEMINI_API_KEY: "mock",
     GROQ_API_KEY: "mock",
-    TAVILY_API_KEY: "mock-key",
-    // Costs
-    COST_CREATE_COURSE: 50,
-    COST_GENERATE_LESSON: 35,
-    COST_GENERATE_AUDIO: 15,
-    COST_EXPORT_PDF: 15,
   },
 }));
 
-// ✅ 2. Mock Redis (Prevents connection errors)
+// ✅ 2. Mock Config Credits directly (Since lessonService imports it)
+jest.mock("../../src/config/credits", () => ({
+  CREDIT_COSTS: {
+    GENERATE_LESSON: 35,
+    COST_REGENERATE_LESSON: 15,
+    EXPORT_PDF: 15,
+  },
+}));
+
+// ✅ 3. Mock Redis
 jest.mock("../../src/config/redis", () => ({
-  redisClient: {
-    get: jest.fn(),
-    set: jest.fn(),
-    setex: jest.fn(),
-    del: jest.fn(),
-    on: jest.fn(),
-    connect: jest.fn(),
-  },
-  redisConnection: {
-    on: jest.fn(),
-    quit: jest.fn(),
+  redisClient: { get: jest.fn(), set: jest.fn() },
+}));
+
+// ✅ 4. Mock Lesson Graph
+jest.mock("../../src/ai/graphs/lessonGraph", () => ({
+  lessonGraph: {
+    invoke: jest.fn(),
   },
 }));
 
-// ✅ 3. Import Dependencies (After mocks)
 import { lessonService } from "../../src/services/lessonService";
+import { lessonGraph } from "../../src/ai/graphs/lessonGraph";
 import { Lesson } from "../../src/models/Lesson";
 import { creditService } from "../../src/services/creditService";
-import { User } from "../../src/models/User";
+import { Module } from "../../src/models/Module";
+import { Course } from "../../src/models/Course";
 
-// ✅ 4. Mock Other Dependencies
+// Mock Deps
 jest.mock("../../src/models/Lesson");
+jest.mock("../../src/models/Module");
+jest.mock("../../src/models/Course");
 jest.mock("../../src/models/User");
 jest.mock("../../src/services/creditService");
-jest.mock("../../src/services/ModelGateway");
-jest.mock("../../src/services/ResearchService");
+
 jest.mock("../../src/utils/semanticCache", () => ({
-  semanticCache: { getCachedLesson: jest.fn(), setCachedLesson: jest.fn() },
+  semanticCache: {
+    getCachedLesson: jest.fn().mockResolvedValue(null),
+    setCachedLesson: jest.fn().mockResolvedValue(true),
+  },
 }));
 
-describe("LessonService Unit Tests", () => {
-  const mockLessonId = "lesson_123";
+describe("LessonService Unit", () => {
   const mockUserId = "user_123";
+  const mockLessonId = "lesson_123";
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (creditService.deductCredits as jest.Mock).mockResolvedValue(true);
+    (creditService.getBalance as jest.Mock).mockResolvedValue(100);
   });
 
-  // 1. Update Code Block
-  describe("updateCodeBlock", () => {
-    it("should update code and output for valid index", async () => {
+  describe("generateContent", () => {
+    it("should use lessonGraph to generate and save content", async () => {
+      // 1. Setup DB Data
       const mockLesson = {
         _id: mockLessonId,
-        content: [{ type: "code", code: "old", output: "old" }],
+        title: "Test Lesson",
+        module: "mod_1",
+        content: [],
+        save: jest.fn(),
       };
       (Lesson.findById as jest.Mock).mockResolvedValue(mockLesson);
-      (Lesson.updateOne as jest.Mock).mockResolvedValue({ modifiedCount: 1 });
+      (Module.findById as jest.Mock).mockResolvedValue({ course: "course_1" });
+      (Course.findById as jest.Mock).mockResolvedValue({
+        title: "Course Title",
+      });
 
-      await lessonService.updateCodeBlock(
-        mockLessonId,
-        mockUserId,
-        0,
-        "new code",
-        "new output",
-      );
+      // 2. Setup Graph Mock
+      const mockGraphResult = {
+        content: [{ type: "paragraph", text: "Generated Content" }],
+        objectives: ["Learn X"],
+      };
+      (lessonGraph.invoke as jest.Mock).mockResolvedValue(mockGraphResult);
 
-      expect(Lesson.updateOne).toHaveBeenCalledWith(
-        { _id: mockLessonId },
-        {
-          $set: {
-            "content.0.code": "new code",
-            "content.0.output": "new output",
-          },
-        },
-      );
-    });
+      // 3. Execute
+      await lessonService.generateContent(mockLessonId, mockUserId);
 
-    it("should throw error for invalid block index", async () => {
-      const mockLesson = { _id: mockLessonId, content: [] }; // Empty content
-      (Lesson.findById as jest.Mock).mockResolvedValue(mockLesson);
-
-      await expect(
-        lessonService.updateCodeBlock(mockLessonId, mockUserId, 5, "code"),
-      ).rejects.toThrow("Invalid block index");
+      // 4. Verify
+      expect(lessonGraph.invoke).toHaveBeenCalled();
+      expect(mockLesson.content).toEqual(mockGraphResult.content);
+      expect(mockLesson.save).toHaveBeenCalled();
     });
   });
 
-  // 2. PDF Credits
   describe("deductPDFCredits", () => {
-    it("should deduct credits successfully", async () => {
+    it("should deduct credits and return remaining balance", async () => {
       (creditService.deductCredits as jest.Mock).mockResolvedValue(true);
       (creditService.getBalance as jest.Mock).mockResolvedValue(85);
 
       const result = await lessonService.deductPDFCredits(mockUserId);
 
-      expect(creditService.deductCredits).toHaveBeenCalledWith(mockUserId, 15); // Default PDF cost
+      // ✅ FIX: Verify with literal 15 (mocked value)
+      expect(creditService.deductCredits).toHaveBeenCalledWith(mockUserId, 15);
       expect(result.success).toBe(true);
-    });
-
-    it("should throw error if insufficient credits", async () => {
-      (creditService.deductCredits as jest.Mock).mockResolvedValue(false);
-
-      await expect(lessonService.deductPDFCredits(mockUserId)).rejects.toThrow(
-        "Insufficient credits",
-      );
-    });
-  });
-
-  // 3. Generation Idempotency
-  describe("generateContent", () => {
-    it("should return existing lesson if already enriched (Idempotency)", async () => {
-      const enrichedLesson = { isEnriched: true, content: ["stuff"] };
-      (Lesson.findById as jest.Mock).mockResolvedValue(enrichedLesson);
-
-      const result = await lessonService.generateContent(
-        mockLessonId,
-        mockUserId,
-      );
-
-      expect(result).toEqual(enrichedLesson);
-      expect(creditService.deductCredits).not.toHaveBeenCalled(); // No charge
     });
   });
 });

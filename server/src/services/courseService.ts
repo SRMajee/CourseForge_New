@@ -12,7 +12,6 @@ import {
   lessonResponseSchema,
   outlineSchema,
 } from "../ai/parsers/courseSchema";
-import { researchService } from "./ResearchService";
 import { creditService } from "./creditService"; // 👈 Import
 import { redisClient } from "../config/redis";
 import { imageService } from "./imageService";
@@ -20,6 +19,9 @@ import { getVectorStore } from "./vectorStore";
 import { youtubeService } from "./youtubeService";
 import { codeExecutionService } from "./CodeExecutionService";
 import { PROMPTS } from "../ai/prompts/prompts";
+import { courseGraph } from "../ai/graphs/courseGraph";
+import { lessonGraph } from "../ai/graphs/lessonGraph";
+import z from "zod";
 
 export class ClarificationNeededError extends Error {
   public data: any;
@@ -32,6 +34,7 @@ export class ClarificationNeededError extends Error {
 export interface GenerateOptions {
   userAnswers?: any;
   mode?: "standard" | "pro"; // 👈 New Option
+  threadId?: string;
 }
 export class CourseService {
   /**
@@ -106,10 +109,7 @@ export class CourseService {
       requestedMode === "pro"
         ? TaskTier.LOGIC_REASONING
         : TaskTier.FAST_UTILITY;
-    const model = modelGateway.getChatModel(planningTier);
 
-    const structuredLlm = model.withStructuredOutput(outlineSchema);
-    const chain = PROMPTS.COURSE_OUTLINE.pipe(structuredLlm);
     logger.info(
       `👤 User ${userId} | Mode: ${requestedMode.toUpperCase()} | Tier: ${planningTier} | Cost: ${cost}`,
     );
@@ -147,65 +147,42 @@ export class CourseService {
         let thumbnailUrl =
           "https://images.unsplash.com/photo-1557682250-33bd709cbe85";
         // Run AI & Image Fetching simultaneously
-        const [generatedSyllabus, fetchedImage] = await Promise.all([
-          // Task A: AI Generation (The Heavy Lift)
-          (async () => {
-            // A1. Context Injection
-            let scopingContext = "";
-            if (
-              options.userAnswers &&
-              Object.keys(options.userAnswers).length > 0
-            ) {
-              scopingContext = Object.entries(options.userAnswers)
-                .map(([k, v]) => `Question: ${k} -> Answer: ${v}`)
-                .join("\n");
-            }
+        const threadId = options.threadId || `course_${userId}_${Date.now()}`;
+        const [graphState, fetchedImage] = await Promise.all([
+          courseGraph.invoke(
+            {
+              topic,
+              userContext: JSON.stringify(options.userAnswers || {}),
+              webContext: "",
+              ragContext: "",
+              iterations: 0,
+              draft: null,
+              critique: null,
+              score: 0,
+              approved: false,
+            },
+            {
+              configurable: { thread_id: threadId }, // 👈 Enable Checkpointing
+            },
+          ),
 
-            // A2. Research (Parallelizable sub-task, but kept linear for context flow)
-            const searchTopic = scopingContext
-              ? `${topic} with context: ${scopingContext}`
-              : topic;
-            const webContext =
-              await researchService.getTechnicalContext(searchTopic);
-
-            // A3. RAG Search
-            let ragContext = "";
-            try {
-              const vectorStore = getVectorStore();
-              const results = await vectorStore.similaritySearch(topic, 2);
-              if (results.length > 0) {
-                ragContext = results.map((doc) => doc.pageContent).join("\n\n");
-              }
-            } catch (error) {
-              logger.warn("⚠️ [RAG] Skipped:", error);
-            }
-       const result = await chain.invoke({
-              topic: topic,
-              ragContext: ragContext || "", // Handle empty context safely
-              scopingContext: scopingContext || "None",
-              webContext: webContext || "None",
-            });
-
-            // Fire-and-Forget Cache Write
-            semanticCache
-              .setCachedOutline(cacheKey, result)
-              .catch((e) => logger.error("Cache Write Fail", e));
-
-            return result;
-          })(),
-
-          // Task B: Image Fetching (Runs while AI is thinking)
           (async () => {
             try {
               const url = await imageService.getCourseThumbnail(topic);
               return url || thumbnailUrl;
             } catch (e) {
-              return thumbnailUrl; // Fail silently to default
+              return thumbnailUrl;
             }
           })(),
         ]);
-        syllabusData = generatedSyllabus;
+        if (!graphState.draft) {
+          throw new Error("AI failed to generate a valid course draft.");
+        }
+        syllabusData = graphState.draft;
         thumbnailUrl = fetchedImage;
+        semanticCache
+          .setCachedOutline(cacheKey, syllabusData)
+          .catch((e) => logger.error("Cache Write Fail", e));
         // 6. Save to DB (Pure Persistence)
         const course = await this.saveCourseToDb(
           userId,
@@ -215,6 +192,7 @@ export class CourseService {
         );
         return course;
       }
+
       const url = await imageService.getCourseThumbnail(topic);
       return await this.saveCourseToDb(
         userId,
@@ -256,7 +234,6 @@ export class CourseService {
     });
   }
 
-
   async getCourseById(courseId: Object | string) {
     return await Course.findById(courseId).populate({
       path: "modules",
@@ -264,6 +241,8 @@ export class CourseService {
     });
   }
   // ✅ UPDATED: Regenerate with Tag Enforcement & Mode Fix
+  // ... inside CourseService class
+
   async regenerateCourse(
     courseId: string,
     userId: string,
@@ -272,33 +251,55 @@ export class CourseService {
   ) {
     const course = await Course.findOne({ _id: courseId, userId });
     if (!course) throw new Error("Course not found");
+
+    // 1. Credit & Balance Checks (Keep existing logic)
     const COST_PRO = Number(CREDIT_COSTS.COST_REGENERATE_COURSE_PRO) || 75;
     const COST = Number(CREDIT_COSTS.COST_REGENERATE_COURSE) || 25;
     const cost = mode === "pro" ? COST_PRO : COST;
     await this.validateBalance(userId, cost);
     await creditService.deductCredits(userId, cost);
+
     const tier =
       mode === "pro" ? TaskTier.LOGIC_REASONING : TaskTier.FAST_UTILITY;
     const model = modelGateway.getChatModel(tier);
+
+    // 2. ✅ NEW: Fetch RAG Context for the Update
+    let ragContext = "";
+    try {
+      const vectorStore = getVectorStore();
+      // Search using the instruction combined with the title for context
+      const searchQuery = `${course.title} ${instruction}`;
+      const results = await vectorStore.similaritySearch(searchQuery, 3);
+
+      if (results.length > 0) {
+        ragContext = results.map((doc) => doc.pageContent).join("\n\n");
+        logger.info(
+          `📚 [Regen RAG] Found context for update: "${instruction}"`,
+        );
+      }
+    } catch (error) {
+      logger.warn("⚠️ [Regen RAG] Skipped:", error);
+    }
 
     const structuredLlm = model.withStructuredOutput(outlineSchema);
     const chain = PROMPTS.REGENERATE_OUTLINE.pipe(structuredLlm);
 
     try {
-     const newSyllabus = await chain.invoke({
+      const newSyllabus = await chain.invoke({
         instruction: instruction || "Make it better",
         title: course?.title || "Untitled Course",
         description: course?.description || "No description",
+        ragContext: ragContext,
       });
 
-      // ✅ Pass 'instruction' to archive the OLD version before overwriting
+      // 3. Save & Archive (Keep existing logic)
       const updatedCourse = await this.saveCourseToDb(
         userId,
         { ...newSyllabus, title: course.title, tags: course.tags },
         course.thumbnailUrl!,
         mode,
         courseId,
-        instruction, // 👈 New: Archive Instruction
+        instruction,
       );
 
       return updatedCourse;
@@ -309,6 +310,7 @@ export class CourseService {
   }
 
   // ✅ UPDATED: Refine Lesson with Mode History
+
   async refineLesson(
     lessonId: string,
     userId: string,
@@ -317,114 +319,54 @@ export class CourseService {
   ) {
     const lesson = await Lesson.findById(lessonId);
     if (!lesson) throw new Error("Lesson not found");
+
     const COST_PRO = Number(CREDIT_COSTS.COST_REGENERATE_LESSON_PRO) || 25;
     const COST = Number(CREDIT_COSTS.COST_REGENERATE_LESSON) || 15;
     const cost = mode === "pro" ? COST_PRO : COST;
+    const module = await Module.findById(lesson.module);
+    const course = module ? await Course.findById(module.course) : null;
+    const courseTitle = course?.title || "General Topic";
+    const moduleTitle = module?.title || "General Module";
+
     await this.validateBalance(userId, cost);
     await creditService.deductCredits(userId, cost);
 
+    // Determine Tier based on Mode
     const tier =
       mode === "pro" ? TaskTier.CREATIVE_WRITING : TaskTier.FAST_UTILITY;
-    const model = modelGateway.getChatModel(tier);
-
-    const structuredLlm = model.withStructuredOutput(lessonResponseSchema);
-    const chain = PROMPTS.REFINE_LESSON.pipe(structuredLlm);
 
     try {
-  
-      let refinedLesson = await chain.invoke({
-        instruction: instruction,
-
-        title: lesson.title,
-        content: lesson.content,
+      // ✅ USE GRAPH: Delegates logic to the unified workflow
+      const graphResult = (await lessonGraph.invoke({
+        topic: lesson.title,
+        courseTitle: courseTitle,
+        moduleTitle: moduleTitle,
+        instruction: instruction, // 👈 Triggers "Refine Mode" in Graph
+        currentContent: lesson.content, // 👈 Input for refinement
         objectives: lesson.objectives,
-      });
-      if (refinedLesson.content && Array.isArray(refinedLesson.content)) {
-        logger.info("🎥 Enriching lesson with YouTube content...");
+        modelTier: tier, // 👈 Pass user's selected tier
+        ragContext: "",
+        content: [],
+        codeErrors: [],
+        iterations: 0,
+      })) as z.infer<typeof lessonResponseSchema>;
 
-        const enrichedContent = await Promise.all(
-          refinedLesson.content.map(async (block: any) => {
-            // ✅ FIX 1: Process ALL video blocks (even if query is missing)
-            if (block.type === "video") {
-              const query = block.query || lesson.title;
-              let videoData = null;
-
-              if (query) {
-                // ✅ SAFETY: Wrap in try/catch to ensure Quota errors don't crash generation
-                try {
-                  videoData = await youtubeService.searchVideo(query);
-                } catch (e) {
-                  logger.warn(
-                    `Bypassed YouTube search for "${query}" due to error.`,
-                  );
-                  videoData = null;
-                }
-              }
-
-              if (videoData) {
-                return {
-                  type: "video",
-                  url: `https://www.youtube.com/watch?v=${videoData.videoId}`,
-                  title: videoData.title,
-                  thumbnail: videoData.thumbnail,
-                };
-              } else {
-                // ✅ FIX 2: Safe Fallback Link
-                const safeQuery = query || "Educational Video";
-                logger.warn(
-                  `⚠️ YouTube fallback active for: "${safeQuery}". Generating Link block.`,
-                );
-
-                return {
-                  type: "link",
-                  title: `Watch Related Video: ${safeQuery}`,
-                  url: `https://www.youtube.com/results?search_query=${encodeURIComponent(safeQuery)}`,
-                  description: `Click here to search for videos about ${safeQuery}`,
-                };
-              }
-            }
-            if (block.type === "code") {
-              // This will execute python code, fix errors, and return verified code
-              return await codeExecutionService.verifyCodeBlock(block);
-            }
-            // ✅ FIX 3: Sanitize AI-Hallucinated Broken Links
-            if (block.type === "link") {
-              if (!block.url || block.url.includes("undefined")) {
-                const cleanQuery = block.title || lesson.title;
-                return {
-                  ...block,
-                  url: `https://www.google.com/search?q=${encodeURIComponent(cleanQuery)}`,
-                  description:
-                    block.description || "Learn more about this topic",
-                };
-              }
-            }
-
-            return block;
-          }),
-        );
-
-        refinedLesson.content = enrichedContent;
-      }
-
+      // Archive Old Version
       if (!lesson.history) lesson.history = [];
-
-      // ✅ Archive current state with Mode
-      // We assume the lesson has a generationMode field or we default to standard if not tracked before
-      // (Note: You might need to add generationMode to Lesson Schema if not present, otherwise this is just metadata in history)
       lesson.history.push({
         timestamp: new Date(),
         instruction: "Original (Pre-refinement)",
         content: lesson.content,
-        // @ts-ignore - Assuming Lesson schema will be updated or using Mixed for history
+        // @ts-ignore
         generationMode: (lesson as any).generationMode || "standard",
       });
 
-      lesson.content = refinedLesson.content;
-      lesson.objectives = refinedLesson.objectives || lesson.objectives;
+      // Update & Save
+      lesson.content = graphResult.content;
+      lesson.objectives = graphResult.objectives;
       lesson.isEnriched = true;
       // @ts-ignore
-      lesson.generationMode = mode; // Update current mode
+      lesson.generationMode = mode;
 
       await lesson.save();
 

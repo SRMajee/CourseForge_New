@@ -109,22 +109,11 @@ export const PROMPTS = {
       The user wants to learn: "{topic}"
 
       TASK:
-      Generate 3-4 specific clarifying questions to tailor the course content.
-      The questions must be **SPECIFIC** to {topic}.
-
-      OUTPUT JSON (Strict):
-      {{
-        "isAmbiguous": true,
-        "reason": "I need to know your specific focus within {topic}.",
-        "questions": [
-          {{ 
-            "id": "q1", 
-            "text": "Question text...", 
-            "type": "choice", 
-            "options": ["Option A", "Option B", "Option C"] 
-          }}
-        ]
-      }}`,
+      1. Analyze the topic to determine if it is broad/ambiguous.
+      2. If ambiguous, generate 3-4 specific clarifying questions to tailor the course content.
+      3. The questions must be **SPECIFIC** to {topic}.
+      
+      Generate the output using the provided tool structure.`,
     ],
     ["human", `Topic: "{topic}"`],
   ]),
@@ -144,6 +133,9 @@ export const PROMPTS = {
       2. Restructure modules/lessons to address feedback
       3. Generate 3-5 relevant tags
       4. Output valid JSON matching the schema
+      
+      CONTEXTUAL KNOWLEDGE (Use if relevant to the instruction):
+      {ragContext}
       
       CRITICAL CONSTRAINTS:
       - Each module MUST have at least 2 lessons.
@@ -267,5 +259,48 @@ export const PROMPTS = {
 "{webContext}"
         `,
     ],
+  ]),
+
+  // 8. Critique Course Outline
+  CRITIQUE_OUTLINE: ChatPromptTemplate.fromMessages([
+    [
+      "system",
+      `You are a strict Curriculum Board Reviewer.
+      
+      Review the provided Course Syllabus JSON.
+      
+      CHECKLIST:
+      1. Structure: Are there 3-5 modules? Does every module have at least 2 lessons?
+      2. Flow: Do topics progress logically (Beginner -> Advanced)?
+      3. Relevance: Does it strictly match the user's topic?
+      4. Depth: Are the descriptions insightful (not generic)?
+
+      OUTPUT JSON (Strict):
+      {{
+        "approved": boolean,
+        "score": number, // 0-100
+        "critique": "Specific feedback on what to fix. If approved, say 'Looks good'."
+      }}`,
+    ],
+    ["human", `TOPIC: {topic}\n\nDRAFT SYLLABUS:\n{draft}`],
+  ]),
+
+  // 9. Refine based on Critique
+  REFINE_OUTLINE: ChatPromptTemplate.fromMessages([
+    [
+      "system",
+      `You are a Senior Curriculum Architect.
+      
+      TASK: Fix the syllabus based on the Reviewer's feedback.
+      
+      CRITIQUE: "{critique}"
+      
+      CRITICAL CONSTRAINTS:
+      - Each module MUST have at least 2 lessons.
+      - Total modules must be between 3 and 5.
+      
+      OUTPUT: The full, corrected JSON syllabus matching the original schema.`,
+    ],
+    ["human", `Original Draft: {draft}`],
   ]),
 };

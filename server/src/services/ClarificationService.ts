@@ -8,9 +8,8 @@ import { PROMPTS } from "../ai/prompts/prompts";
 
 class ClarificationService {
   async analyzeTopic(topic: string): Promise<ClarificationResponse> {
-    // MOVED INSIDE TRY/CATCH for safety
     try {
-      const model = modelGateway.getChatModel(TaskTier.FAST_UTILITY);
+      const model = modelGateway.getChatModel(TaskTier.LOGIC_REASONING);
       const structuredLlm = model.withStructuredOutput(clarificationSchema);
       const chain = PROMPTS.CLARIFICATION.pipe(structuredLlm);
 

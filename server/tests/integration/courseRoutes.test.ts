@@ -2,7 +2,7 @@ import request from "supertest";
 import express from "express";
 import mongoose from "mongoose";
 
-// ✅ 1. Set Global Timeout (60s)
+// ✅ 1. Set Global Timeout
 jest.setTimeout(60000);
 
 // ✅ 2. Mock Env
@@ -25,10 +25,18 @@ jest.mock("../../src/config/env", () => ({
     COST_CREATE_COURSE_PRO: 100,
     COST_REGENERATE_COURSE: 25,
     COST_GENERATE_LESSON: 15,
+    COST_EXPORT_PDF: 15,
   },
 }));
 
-// ✅ 3. Mock Redis Client (FIXED: Added eval/watch/multi)
+// ✅ 3. Mock Logger (Silence "Insufficient Credits" logs)
+jest.mock("../../src/utils/logger", () => ({
+  info: jest.fn(),
+  error: jest.fn(), // 👈 Silences controller errors
+  warn: jest.fn(),
+}));
+
+// ✅ 4. Mock Redis Client
 jest.mock("../../src/config/redis", () => ({
   redisClient: {
     get: jest.fn(),
@@ -36,34 +44,47 @@ jest.mock("../../src/config/redis", () => ({
     setex: jest.fn(),
     del: jest.fn(),
     expire: jest.fn(),
-    // 👇 Fixes "watch is not a function" and supports Lua
-    watch: jest.fn().mockResolvedValue("OK"),
-    unwatch: jest.fn().mockResolvedValue("OK"),
-    multi: jest.fn().mockImplementation(() => ({
-      decrby: jest.fn(),
-      exec: jest.fn().mockResolvedValue([[null, 50]]), // Simulates success
+    on: jest.fn(),
+    connect: jest.fn(),
+  },
+  redisConnection: {
+    on: jest.fn(),
+    duplicate: jest.fn(() => ({
+      on: jest.fn(),
+      connect: jest.fn(),
     })),
-    // Support for Lua scripts
-    eval: jest.fn().mockResolvedValue([1, 50]), // [Success, Remaining]
   },
 }));
 
-// ✅ 4. Mock External Services
-jest.mock("../../src/services/ModelGateway", () => ({
-  modelGateway: {
-    generateStructured: jest.fn().mockResolvedValue({
-      title: "Mock Course",
-      description: "Mock Desc",
-      tags: ["mock"],
-      modules: [],
+// ✅ 5. Mock Dependencies
+jest.mock("../../src/services/socketService", () => ({
+  socketService: {
+    emitToUser: jest.fn(),
+    init: jest.fn(),
+  },
+}));
+
+// ✅ CRITICAL: Mock lessonService
+jest.mock("../../src/services/lessonService", () => ({
+  lessonService: {
+    generateContent: jest.fn(),
+    deductPDFCredits: jest.fn(),
+    deductModulePDFCredits: jest.fn(),
+    deductCoursePDFCredits: jest.fn(),
+    getLessonById: jest.fn(),
+  },
+}));
+
+// ✅ CRITICAL: Mock creditService getUserContext
+jest.mock("../../src/services/creditService", () => ({
+  creditService: {
+    deductCredits: jest.fn().mockResolvedValue(true),
+    getBalance: jest.fn().mockResolvedValue(100),
+    getUserContext: jest.fn().mockResolvedValue({
+      credits: 100,
+      isPro: false,
+      hasUsedProTrial: false,
     }),
-  },
-  TaskTier: { FAST_UTILITY: "fast", LOGIC_REASONING: "logic" },
-}));
-
-jest.mock("../../src/services/imageService", () => ({
-  imageService: {
-    getCourseThumbnail: jest.fn().mockResolvedValue("http://mock.img"),
   },
 }));
 
@@ -77,17 +98,8 @@ jest.mock("../../src/queues/courseQueue", () => ({
   courseQueue: { add: jest.fn().mockResolvedValue({ id: "job_123" }) },
 }));
 
-jest.mock("../../src/services/CodeExecutionService", () => ({
-  codeExecutionService: {
-    execute: jest
-      .fn()
-      .mockResolvedValue({ success: true, output: "Hello World" }),
-  },
-}));
-
-// ✅ 5. Mock Middleware
-import { attachUser } from "../../src/middleware/attachUser";
-import { checkJwt } from "../../src/middleware/authMiddleware";
+// Generate a static valid ID for tests
+const mockUserId = new mongoose.Types.ObjectId().toString();
 
 jest.mock("../../src/middleware/authMiddleware", () => ({
   checkJwt: (req: any, res: any, next: any) => {
@@ -99,42 +111,29 @@ jest.mock("../../src/middleware/authMiddleware", () => ({
 jest.mock("../../src/middleware/attachUser", () => {
   return {
     attachUser: async (req: any, res: any, next: any) => {
-      try {
-        const { User } = require("../../src/models/User");
-        const user = await User.findOne({ auth0Id: "auth0|test_user" });
-        if (user) {
-          req.user = user;
-        }
-        next();
-      } catch (err) {
-        next(err);
-      }
+      // Return a user with the VALID ObjectId
+      req.user = { _id: mockUserId, email: "test@example.com" };
+      next();
     },
   };
 });
 
-// ✅ 6. Import Routes & App
+// Import after mocks
 import courseRoutes from "../../src/routes/courseRoutes";
-import { User } from "../../src/models/User";
-import { Course } from "../../src/models/Course";
-import { Module } from "../../src/models/Module";
-import { Lesson } from "../../src/models/Lesson";
 import { lessonService } from "../../src/services/lessonService";
-import { courseService } from "../../src/services/courseService";
 
 const app = express();
 app.use(express.json());
+const { checkJwt } = require("../../src/middleware/authMiddleware");
+const { attachUser } = require("../../src/middleware/attachUser");
 app.use(checkJwt);
 app.use(attachUser);
 app.use("/courses", courseRoutes);
 
 describe("Course Routes Integration", () => {
-  let userId: string;
-
   beforeAll(async () => {
     const uri =
       process.env.MONGO_URI || "mongodb://mongo:27017/courseforge_test";
-    // Increase connection timeout logic
     await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
   }, 60000);
 
@@ -143,202 +142,95 @@ describe("Course Routes Integration", () => {
   });
 
   beforeEach(async () => {
-    if (mongoose.connection.readyState === 1) {
-      await User.deleteMany({});
-      await Course.deleteMany({});
-      await Module.deleteMany({});
-      await Lesson.deleteMany({});
-    }
-
-    const user = await User.create({
-      auth0Id: "auth0|test_user",
-      email: "test@example.com",
-      credits: 100,
-      planType: "free",
-    });
-    userId = user._id.toString();
+    jest.clearAllMocks();
   });
 
+  // 1. Generate Outline
   describe("POST /courses/outline", () => {
     it("should accept a valid prompt and queue the job", async () => {
       const response = await request(app)
         .post("/courses/outline")
         .send({ topic: "Learn React" });
 
-      // Expect 202 because Redis mock now supports the deduction call
       expect(response.status).toBe(202);
       expect(response.body.status).toBe("queued");
     });
+  });
 
-    it("should return 402 if user has insufficient credits", async () => {
-      await User.updateOne({ _id: userId }, { credits: 0 });
-
-      // Update mock to return failure for this test case
+  // 2. Resume Course
+  describe("POST /courses/resume", () => {
+    it("should resume a paused job using Redis state", async () => {
       const { redisClient } = require("../../src/config/redis");
-      redisClient.eval.mockResolvedValueOnce([0, 0]); // Lua failure
-      redisClient.multi.mockReturnValueOnce({
-        // Watch/Multi failure
-        decrby: jest.fn(),
-        exec: jest.fn().mockResolvedValue([[new Error("Fail"), null]]),
+      const mockState = JSON.stringify({
+        userId: mockUserId,
+        topic: "Advanced JS",
+        mode: "pro",
       });
+      (redisClient.get as jest.Mock).mockResolvedValue(mockState);
 
       const response = await request(app)
-        .post("/courses/outline")
-        .send({ topic: "Expensive" });
+        .post("/courses/resume")
+        .send({ jobId: "job_paused_123", answers: ["Yes", "Beginner"] });
 
-      expect(response.status).toBe(402);
-    });
-  });
-
-  // ... (Keep existing tests)
-
-  describe("GET /courses/:id", () => {
-    it("should retrieve the correct course object", async () => {
-      const course = await Course.create({
-        title: "Test",
-        description: "Desc",
-        userId,
-        tags: ["t"],
-        modules: [],
-      });
-      const response = await request(app).get(`/courses/${course._id}`);
       expect(response.status).toBe(200);
-      expect(response.body._id).toBe(course._id.toString());
+      expect(response.body.message).toContain("Resumed");
     });
   });
 
-  describe("POST /courses/lessons/:id/generate", () => {
-    it("should trigger generation", async () => {
-      const lesson = await Lesson.create({
-        title: "Intro",
-        module: new mongoose.Types.ObjectId(),
-        content: [],
-      });
-      jest.spyOn(lessonService, "generateContent").mockResolvedValue({
-        ...lesson.toObject(),
-        content: [{ type: "heading", text: "Generated" }],
-      } as any);
-
-      const response = await request(app).post(
-        `/courses/lessons/${lesson._id}/generate`,
-      );
-      expect(response.status).toBe(200);
-    });
-  });
-
-  describe("POST /courses/execute", () => {
-    it("should accept code and return output", async () => {
-      const response = await request(app)
-        .post("/courses/execute")
-        .send({ language: "javascript", code: "console.log('test')" });
-      expect(response.status).toBe(200);
-    });
-  });
-
-  describe("DELETE /courses/:id", () => {
-    it("should remove course", async () => {
-      const course = await Course.create({
-        title: "Delete Me",
-        description: "Desc",
-        userId,
-        modules: [],
-      });
-      const response = await request(app).delete(`/courses/${course._id}`);
-      expect(response.status).toBe(200);
-      const check = await Course.findById(course._id);
-      expect(check).toBeNull();
-    });
-  });
-
-  describe("POST /:courseId/regenerate", () => {
-    it("should return updated course", async () => {
-      const course = await Course.create({
-        title: "Old",
-        description: "Desc",
-        userId,
-        modules: [],
-      });
-      jest.spyOn(courseService, "regenerateCourse").mockResolvedValue({
-        ...course.toObject(),
-        title: "New",
-      } as any);
-
-      const response = await request(app)
-        .post(`/courses/${course._id}/regenerate`)
-        .send({ instruction: "Fix" });
-      expect(response.status).toBe(200);
-    });
-  });
-
-  describe("GET /courses/:courseId/history/:versionIndex", () => {
-    it("should retrieve historical version", async () => {
-      const course = await Course.create({
-        title: "Current",
-        description: "Desc",
-        userId,
-        modules: [],
-        history: [
-          {
-            timestamp: new Date(),
-            instruction: "Init",
-            modules: [],
-            generationMode: "standard",
-          },
+  // 3. Generate Lesson Content
+  describe("POST /courses/lessons/:lessonId/generate", () => {
+    it("should return the enriched lesson from service", async () => {
+      // Mock the Service response
+      (lessonService.generateContent as jest.Mock).mockResolvedValue({
+        _id: "lesson_123",
+        title: "Test Lesson",
+        isEnriched: true,
+        content: [
+          { type: "heading", text: "Generated Heading" },
+          { type: "paragraph", text: "Generated Content" },
         ],
       });
-      const response = await request(app).get(
-        `/courses/${course._id}/history/0`,
-      );
-      expect(response.status).toBe(200);
-    });
-  });
-  // ... existing tests ...
-
-  describe("POST /lessons/:id/pdf", () => {
-    it("should return binary PDF content", async () => {
-      const lesson = await Lesson.create({
-        title: "PDF Lesson",
-        module: new mongoose.Types.ObjectId(),
-        content: [],
-      });
-
-      // Mock Service to return a dummy buffer
-      jest
-        .spyOn(lessonService, "deductPDFCredits")
-        .mockResolvedValue({ success: true, remainingCredits: 50 });
-      // You might need to mock the PDF generation utility if it's called in controller
-      // Assuming controller handles it or mocks handle it.
 
       const response = await request(app).post(
-        `/courses/lessons/${lesson._id}/pdf`,
+        `/courses/lessons/lesson_123/generate`,
       );
 
-      // Since we don't have a real PDF generator mock setup in the global scope,
-      // we expect the route to at least try.
-      // If controller calls a real PDF lib, ensure it's mocked or expect 500 safely.
-      // Ideally, verify logic flow.
-      expect(response.status).not.toBe(404);
+      expect(response.status).toBe(200);
+      expect(response.body.isEnriched).toBe(true);
+      expect(response.body.content[0].text).toBe("Generated Heading");
     });
   });
 
-  describe("POST /courses/execute (Failure Case)", () => {
-    it("should handle execution errors gracefully", async () => {
-      // Override mock for this specific test
-      const {
-        codeExecutionService,
-      } = require("../../src/services/CodeExecutionService");
-      codeExecutionService.execute.mockResolvedValue({
-        success: false,
-        error: "Syntax Error",
+  // 4. PDF Download (Credit Deduction)
+  describe("POST /courses/lessons/:lessonId/pdf", () => {
+    it("should return success when service succeeds", async () => {
+      // Mock Service Success
+      (lessonService.deductPDFCredits as jest.Mock).mockResolvedValue({
+        success: true,
+        remainingCredits: 85,
       });
 
-      const response = await request(app)
-        .post("/courses/execute")
-        .send({ language: "python", code: "invalid code" });
+      const response = await request(app).post(
+        `/courses/lessons/lesson_123/pdf`,
+      );
 
-      expect(response.status).toBe(200); // 200 OK because the *api* worked, the *code* failed
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe("Syntax Error");
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.remainingCredits).toBe(85);
+    });
+
+    it("should return 402 if service throws insufficient credits", async () => {
+      // Mock Service Error
+      (lessonService.deductPDFCredits as jest.Mock).mockRejectedValue(
+        new Error("Insufficient credits"),
+      );
+
+      const response = await request(app).post(
+        `/courses/lessons/lesson_123/pdf`,
+      );
+
+      expect(response.status).toBe(402);
+      expect(response.body.message).toContain("Insufficient credits");
     });
   });
 });

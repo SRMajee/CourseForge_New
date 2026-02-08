@@ -3,7 +3,7 @@ import logger from "../utils/logger";
 import { env } from "../config/env";
 import { modelGateway, TaskTier } from "../ai/services/ModelGateway";
 import { PROMPTS } from "../ai/prompts/prompts";
-import z from "zod";
+// ❌ DELETE: import z from "zod"; (Not needed anymore)
 
 class ResearchService {
   private client;
@@ -12,24 +12,16 @@ class ResearchService {
     this.client = tavily({ apiKey: env.TAVILY_API_KEY });
   }
 
-  /**
-   * Phase 1: Sanitized RAG
-   * 1. Searches for the topic (Advanced Depth).
-   * 2. Uses a cheap LLM to "read" the results and extract only facts.
-   * 3. Returns a clean, condensed summary for the main generator.
-   */
   async getTechnicalContext(topic: string): Promise<string> {
     try {
       logger.info(`🔍 [Research] Searching for latest info on: ${topic}`);
 
       const response = await this.client.search(topic, {
-        search_depth: "advanced", // Deep search for technical details
+        search_depth: "advanced",
         max_results: 5,
-        include_answer: true, // Let Tavily summarize the answer first
+        include_answer: true,
       });
 
-      // 1. Create the Raw Dump (Dirty Data)
-      // We take a slice of content to prevent token overflow before summarization
       const rawContext = response.results
         .map(
           (r: any) =>
@@ -37,44 +29,22 @@ class ResearchService {
         )
         .join("\n\n");
 
-      // 2. The Sanitizer (Clean Data)
-      // We ask the fast model to filter out noise (ads, SEO fluff)
-      // const summaryPrompt = `
-      //   You are a technical researcher.
-      //   Analyze the following search results about "${topic}".
-
-      //   Extract ONLY:
-      //   1. Core libraries/technologies mentioned.
-      //   2. Key concepts and best practices.
-      //   3. One real-world usage example.
-
-      //   Constraints:
-      //   - Keep it under 200 words.
-      //   - Do not use markdown formatting like bolding, just plain text.
-      //   - Ignore irrelevant SEO content or ads.
-
-      //   RAW SEARCH DATA:
-      //   ${response.answer ? `Tavily Summary: ${response.answer}\n` : ""}
-      //   ${rawContext}
-      // `;
       const model = modelGateway.getChatModel(TaskTier.FAST_UTILITY);
 
-      const structuredLlm = model.withStructuredOutput(
-        z.string().describe("Clean, concise summary of the web context"),
-      );
-      const chain = PROMPTS.RESEARCH.pipe(structuredLlm);
+      const chain = PROMPTS.RESEARCH.pipe(model);
 
-      // 3. Execute with Cheap Model (Llama 8B or Gemini Flash)
-      const cleanSummary = (await chain.invoke({
+      const result = await chain.invoke({
         topic: topic,
         webContext: rawContext,
-      })) as unknown as string;
+      });
+
+      // ✅ NEW: Extract text directly from the message content
+      const cleanSummary = result.content.toString();
 
       logger.info("✅ [Research] Context sanitized and summarized.");
 
       return `VERIFIED WEB CONTEXT:\n${cleanSummary}`;
     } catch (error) {
-      // Graceful degradation: If search fails, we continue without it.
       logger.warn(
         "⚠️ [Research] Search failed or timed out. Proceeding with internal knowledge.",
       );

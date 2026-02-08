@@ -21,6 +21,7 @@ import { socketService } from "./socketService";
 import { getVectorStore } from "./vectorStore";
 import { redisClient } from "../config/redis";
 import { PROMPTS } from "../ai/prompts/prompts";
+import { lessonGraph } from "../ai/graphs/lessonGraph";
 export class LessonService {
   /**
    * ✅ VALIDATION HELPER
@@ -99,6 +100,7 @@ export class LessonService {
    * ✅ GENERATION LOGIC (Prompt + AI + DB + Credits)
    * Moved the "Smart Prompt" inside here to keep Controller clean.
    */
+
   async generateContent(lessonId: string, userId: string) {
     const COST = CREDIT_COSTS.GENERATE_LESSON;
 
@@ -120,17 +122,8 @@ export class LessonService {
     const moduleTitle = module?.title || "General Module";
 
     logger.info(`Processing lesson: ${lesson.title}`);
-    const tier =
-      lesson.generationMode === "pro"
-        ? TaskTier.LOGIC_REASONING
-        : TaskTier.CREATIVE_WRITING;
-    const model = modelGateway.getChatModel(tier);
 
-    const structuredLlm = model.withStructuredOutput(lessonResponseSchema);
-    const chain = PROMPTS.LESSON_CONTENT.pipe(structuredLlm);
-    // ---------------------------------------------------------
-    // ⚡ STEP 4: CHECK SEMANTIC CACHE
-    // ---------------------------------------------------------
+    // 4. Check Cache (Keep caching in Service layer)
     let structuredLesson = await semanticCache.getCachedLesson(
       courseTitle,
       lesson.title,
@@ -139,108 +132,34 @@ export class LessonService {
     if (structuredLesson) {
       logger.info(`⚡ [Cache Hit] Serving cached content for: ${lesson.title}`);
     } else {
-      logger.info(`🐢 [Cache Miss] Generating fresh content...`);
-      let ragContext = "";
-      try {
-        const vectorStore = getVectorStore();
-        // Search using Lesson Title + Course Title for better accuracy
-        const searchQuery = `${lesson.title} ${courseTitle}`;
-        const results = await vectorStore.similaritySearch(searchQuery, 2); // Get top 2 chunks
+      logger.info(`🐢 [Cache Miss] Generating via Graph...`);
 
-        if (results.length > 0) {
-          ragContext = results.map((doc) => doc.pageContent).join("\n\n");
-          logger.info(`📚 [RAG] Found context for lesson: "${lesson.title}"`);
-        }
-      } catch (err) {
-        logger.warn("⚠️ [RAG] Vector Search failed:", err);
-      }
-
-      // Call AI
-      structuredLesson = await chain.invoke({
-        topic: lesson?.title || "General Topic",
+      // ✅ GRAPH INVOCATION
+      // Replaces manual RAG, AI generation, YouTube search, and Code Verification
+      const graphResult = await lessonGraph.invoke({
+        topic: lesson.title,
+        courseTitle: courseTitle,
+        moduleTitle: moduleTitle,
+        ragContext: "", // Graph's 'retrieve_context' node will fill this
+        objectives: [],
+        content: [],
+        codeErrors: [],
+        iterations: 0,
       });
 
-      // ---------------------------------------------------------
-      // 🎥 YOUTUBE ENRICHMENT & LINK SANITIZER
-      // ---------------------------------------------------------
-      if (structuredLesson.content && Array.isArray(structuredLesson.content)) {
-        logger.info("🎥 Enriching lesson with YouTube content...");
+      structuredLesson = {
+        content: graphResult.content,
+        objectives: graphResult.objectives,
+        title: lesson.title,
+      };
 
-        const enrichedContent = await Promise.all(
-          structuredLesson.content.map(async (block: any) => {
-            // ✅ FIX 1: Process ALL video blocks (even if query is missing)
-            if (block.type === "video") {
-              const query = block.query || lesson.title;
-              let videoData = null;
-
-              if (query) {
-                // ✅ SAFETY: Wrap in try/catch to ensure Quota errors don't crash generation
-                try {
-                  videoData = await youtubeService.searchVideo(query);
-                } catch (e) {
-                  logger.warn(
-                    `Bypassed YouTube search for "${query}" due to error.`,
-                  );
-                  videoData = null;
-                }
-              }
-
-              if (videoData) {
-                return {
-                  type: "video",
-                  url: `https://www.youtube.com/watch?v=${videoData.videoId}`,
-                  title: videoData.title,
-                  thumbnail: videoData.thumbnail,
-                };
-              } else {
-                // ✅ FIX 2: Safe Fallback Link
-                const safeQuery = query || "Educational Video";
-                logger.warn(
-                  `⚠️ YouTube fallback active for: "${safeQuery}". Generating Link block.`,
-                );
-
-                return {
-                  type: "link",
-                  title: `Watch Related Video: ${safeQuery}`,
-                  url: `https://www.youtube.com/results?search_query=${encodeURIComponent(safeQuery)}`,
-                  description: `Click here to search for videos about ${safeQuery}`,
-                };
-              }
-            }
-            if (block.type === "code") {
-              // This will execute python code, fix errors, and return verified code
-              return await codeExecutionService.verifyCodeBlock(block);
-            }
-            // ✅ FIX 3: Sanitize AI-Hallucinated Broken Links
-            if (block.type === "link") {
-              if (!block.url || block.url.includes("undefined")) {
-                const cleanQuery = block.title || lesson.title;
-                return {
-                  ...block,
-                  url: `https://www.google.com/search?q=${encodeURIComponent(cleanQuery)}`,
-                  description:
-                    block.description || "Learn more about this topic",
-                };
-              }
-            }
-
-            return block;
-          }),
-        );
-
-        structuredLesson.content = enrichedContent;
-      }
-
-      // console.log("Structured Lesson Content:", structuredLesson);
-      // Save to Cache (Background)
+      // Save to Cache
       semanticCache
         .setCachedLesson(courseTitle, lesson.title, structuredLesson)
         .catch((e) => logger.error("Failed to cache lesson:", e));
     }
 
-    // ---------------------------------------------------------
-    // 5. SAVE & DEDUCT
-    // ---------------------------------------------------------
+    // 5. Save & Deduct
     const isDeducted = await creditService.deductCredits(userId, COST);
     if (!isDeducted) throw new Error("Insufficient credits");
 
@@ -254,7 +173,7 @@ export class LessonService {
       logger.info(`✅ Lesson generated & saved. Credits deducted: ${COST}`);
       return lesson;
     } catch (saveError) {
-      // 🚨 SAFETY NET: If saving fails, REFUND the user immediately
+      // 🚨 Refund logic
       logger.error(
         "❌ Save failed after deduction. Refunding user...",
         saveError,

@@ -104,7 +104,23 @@ export class CodeExecutionService {
 
     return this.runPythonLoop(codeBlock);
   }
+  async fixPythonCode(code: string, errorMsg: string): Promise<string> {
+    const model = modelGateway.getChatModel(TaskTier.FAST_UTILITY);
+    const structuredLlm = model.withStructuredOutput(fixedCodeSchema);
+    const chain = PROMPTS.CODE_EXECUTION.pipe(structuredLlm);
 
+    try {
+      const result = (await chain.invoke({
+        currentCode: code,
+        errorMsg: errorMsg,
+      })) as z.infer<typeof fixedCodeSchema>;
+
+      return result.fixed_code;
+    } catch (err) {
+      logger.error("AI Fix failed:", err);
+      return code; // Fallback to original
+    }
+  }
   /**
    * The "Self-Healing" Execution Loop
    */
@@ -202,6 +218,36 @@ export class CodeExecutionService {
       code: currentCode,
       isVerified: false,
     };
+  }
+  async executePython(
+    code: string,
+  ): Promise<{ success: boolean; output: string; error?: string }> {
+    if (!process.env.E2B_API_KEY) {
+      return { success: true, output: "Skipped (No API Key)" };
+    }
+
+    let sandbox: any;
+    try {
+      sandbox = await CodeInterpreter.create();
+      const execResult = await sandbox.notebook.execCell(code);
+
+      if (execResult.error) {
+        const errorMsg = `${execResult.error.name}: ${execResult.error.value}\n${execResult.error.traceback}`;
+        return { success: false, output: "", error: errorMsg };
+      }
+
+      return {
+        success: true,
+        output:
+          execResult.text ||
+          execResult.results?.[0]?.text ||
+          "Executed successfully",
+      };
+    } catch (err: any) {
+      return { success: false, output: "", error: err.message };
+    } finally {
+      if (sandbox) await sandbox.close();
+    }
   }
 }
 

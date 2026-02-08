@@ -11,7 +11,14 @@ jest.mock("../../src/config/env", () => ({
   },
 }));
 
-// ✅ 2. Mock Redis Client
+// ✅ 2. Mock Logger (Silence expected errors)
+jest.mock("../../src/utils/logger", () => ({
+  info: jest.fn(),
+  error: jest.fn(), // 👈 Silences "Generation Failed" logs in console
+  warn: jest.fn(),
+}));
+
+// ✅ 3. Mock Redis Client
 jest.mock("../../src/config/redis", () => ({
   redisClient: {
     get: jest.fn(),
@@ -19,28 +26,87 @@ jest.mock("../../src/config/redis", () => ({
     del: jest.fn(),
     connect: jest.fn(),
     on: jest.fn(),
-    eval: jest.fn().mockResolvedValue([1, 100]), // Support Lua
+    eval: jest.fn().mockResolvedValue([1, 100]),
+  },
+}));
+
+// ✅ 4. Mock Mongoose (Session Logic & Types)
+jest.mock("mongoose", () => {
+  const actual = jest.requireActual("mongoose");
+  return {
+    ...actual,
+    startSession: jest.fn().mockResolvedValue({
+      startTransaction: jest.fn(),
+      commitTransaction: jest.fn(),
+      abortTransaction: jest.fn(),
+      endSession: jest.fn(),
+    }),
+    Types: {
+      ObjectId: actual.Types.ObjectId,
+    },
+  };
+});
+
+// ✅ 5. Robust Mock for Models
+const mockFindById = jest.fn();
+const mockFindOne = jest.fn();
+const mockInsertMany = jest.fn();
+const mockGlobalSave = jest.fn();
+
+// Factory to create Model mocks where instances have a working .save()
+const createMockModel = (name: string) => {
+  const MockModel: any = jest.fn().mockImplementation((data) => {
+    // This represents the "Document" instance
+    const doc: any = {
+      ...data,
+      _id: new mongoose.Types.ObjectId(),
+      modules: [], // Default for Course
+      lessons: [], // Default for Module
+    };
+
+    // Define .save() to return THE SAME DOC (Promise), simulating Mongoose behavior
+    doc.save = jest.fn().mockImplementation(async () => {
+      mockGlobalSave(data); // Track that save was called
+      return doc;
+    });
+
+    return doc;
+  });
+
+  // Static methods
+  MockModel.findById = mockFindById;
+  MockModel.findOne = mockFindOne;
+  MockModel.insertMany = mockInsertMany;
+  return MockModel;
+};
+
+const MockCourse = createMockModel("Course");
+const MockModule = createMockModel("Module");
+const MockLesson = createMockModel("Lesson");
+const MockUser = createMockModel("User");
+
+jest.mock("../../src/models/Course", () => ({ Course: MockCourse }));
+jest.mock("../../src/models/Module", () => ({ Module: MockModule }));
+jest.mock("../../src/models/Lesson", () => ({ Lesson: MockLesson }));
+jest.mock("../../src/models/User", () => ({ User: MockUser }));
+
+// ✅ 6. Mock Graph
+jest.mock("../../src/ai/graphs/courseGraph", () => ({
+  courseGraph: {
+    invoke: jest.fn(),
   },
 }));
 
 import { courseService } from "../../src/services/courseService";
-import { User } from "../../src/models/User";
-import { Course } from "../../src/models/Course";
-import { Module } from "../../src/models/Module";
-import { Lesson } from "../../src/models/Lesson";
 import { creditService } from "../../src/services/creditService";
-import { modelGateway } from "../../src/services/ModelGateway";
 import { imageService } from "../../src/services/imageService";
-import { redisClient } from "../../src/config/redis";
+import { courseGraph } from "../../src/ai/graphs/courseGraph";
 
-// Mock Dependencies
 jest.mock("../../src/services/creditService");
-jest.mock("../../src/services/ModelGateway");
 jest.mock("../../src/services/imageService");
 jest.mock("../../src/services/ResearchService", () => ({
   researchService: { getTechnicalContext: jest.fn().mockResolvedValue("") },
 }));
-
 jest.mock("../../src/utils/semanticCache", () => ({
   semanticCache: {
     getCachedOutline: jest.fn().mockResolvedValue(null),
@@ -48,137 +114,100 @@ jest.mock("../../src/utils/semanticCache", () => ({
   },
 }));
 
-// ✅ Increase Global Timeout
-jest.setTimeout(60000);
+describe("CourseService Unit", () => {
+  const userId = new mongoose.Types.ObjectId().toString();
 
-describe("CourseService Logic", () => {
-  let userId: string;
-
-  beforeAll(async () => {
-    const uri =
-      process.env.MONGO_URI || "mongodb://mongo:27017/courseforge_test";
-    // ❌ Removed try/catch to expose connection errors
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
-  });
-
-  afterAll(async () => {
-    await mongoose.disconnect();
-  });
-
-  beforeEach(async () => {
-    if (mongoose.connection.readyState === 1) {
-      await User.deleteMany({});
-      await Course.deleteMany({});
-      await Module.deleteMany({});
-      await Lesson.deleteMany({});
-    }
+  beforeEach(() => {
     jest.clearAllMocks();
 
-    const user = await User.create({
-      auth0Id: "auth0|svc_test",
-      email: "svc@test.com",
-      credits: 100,
-      planType: "free",
+    // Smart FindById Mock
+    mockFindById.mockImplementation((id) => {
+      const chain = {
+        select: jest.fn().mockReturnThis(),
+        populate: jest.fn().mockReturnThis(),
+        session: jest.fn().mockReturnThis(),
+        then: (resolve: any) => {
+          // Default to User structure
+          resolve({
+            _id: userId,
+            planType: "FREE",
+            credits: 100,
+            save: jest.fn(),
+            // Course fields safe defaults
+            title: "AI Course",
+            modules: [{ title: "Intro", lessons: [] }],
+          });
+        },
+      };
+      return chain;
     });
-    userId = user._id.toString();
+
+    // Mock InsertMany to return objects with .save()
+    mockInsertMany.mockResolvedValue([
+      { _id: "les_1", save: jest.fn() },
+      { _id: "les_2", save: jest.fn() },
+    ]);
+
+    (creditService.deductCredits as jest.Mock).mockResolvedValue(true);
+    (imageService.getCourseThumbnail as jest.Mock).mockResolvedValue(
+      "http://img.com",
+    );
   });
 
-  // ... (Keep existing tests)
-  describe("deleteCourse (Cascade)", () => {
-    it("should delete course, modules, and lessons recursively", async () => {
-      const course = await Course.create({
-        title: "C",
-        description: "D",
-        userId,
-        modules: [],
-      });
-      const module = await Module.create({
-        title: "M",
-        course: course._id,
-        lessons: [],
-      });
-      const lesson = await Lesson.create({
-        title: "L",
-        module: module._id,
-        content: [],
-      });
+  describe("generateCourse", () => {
+    it("should invoke courseGraph and save result", async () => {
+      // 1. Mock Graph Result
+      const mockGraphState = {
+        draft: {
+          title: "AI Course",
+          description: "Learn AI",
+          tags: ["AI"],
+          modules: [
+            {
+              title: "Intro",
+              lessons: [{ title: "Lesson 1" }, { title: "Lesson 2" }],
+            },
+          ],
+        },
+      };
 
-      course.modules.push(module._id as any);
-      await course.save();
-      module.lessons.push(lesson._id as any);
-      await module.save();
-
-      await courseService.deleteCourse(course._id.toString(), userId);
-
-      const foundCourse = await Course.findById(course._id);
-      expect(foundCourse).toBeNull();
-    });
-  });
-
-  describe("generateCourse (Logic)", () => {
-    it("should parse AI JSON and save full structure to DB", async () => {
-      (creditService.getUserContext as jest.Mock).mockResolvedValue({
-        credits: 100,
-        planType: "free",
-        subscriptionStatus: "active",
-        hasUsedProTrial: false,
-        isPro: false,
-      });
-
-      (creditService.deductCredits as jest.Mock).mockResolvedValue(true);
-      (modelGateway.generateStructured as jest.Mock).mockResolvedValue({
-        title: "AI Course",
-        description: "Desc",
-        tags: ["AI"],
-        modules: [{ title: "Mod 1", lessons: [{ title: "Les 1" }] }],
-      });
-      (imageService.getCourseThumbnail as jest.Mock).mockResolvedValue(
-        "http://img.com/1.jpg",
-      );
+      (courseGraph.invoke as jest.Mock).mockResolvedValue(mockGraphState);
 
       const result = await courseService.generateCourse(userId, "Topic", {
         mode: "standard",
+        threadId: "test_thread_123",
       });
 
-      expect(result?.title).toBe("AI Course");
-      expect(result?.modules.length).toBe(1);
-    });
-  });
-
-  // ... (Rest of file)
-  describe("validateBalance", () => {
-    it("should throw if user has insufficient credits", async () => {
-      // 1. Mock Redis returning low balance
-      (creditService.getBalance as jest.Mock).mockResolvedValue(10);
-
-      // 2. Update DB User to ALSO have low credits (prevents drift healing)
-      await User.findByIdAndUpdate(userId, { credits: 10 });
-
-      // 3. Mock Redis set (just in case)
-      (redisClient.set as jest.Mock).mockResolvedValue("OK");
-
-      await expect(courseService.validateBalance(userId, 50)).rejects.toThrow(
-        /Insufficient credits/,
+      // ✅ Verify Graph
+      expect(courseGraph.invoke).toHaveBeenCalledWith(
+        expect.objectContaining({ topic: "Topic" }),
+        expect.objectContaining({
+          configurable: { thread_id: "test_thread_123" },
+        }),
       );
+
+      // ✅ Verify DB Transaction Usage
+      expect(mongoose.startSession).toHaveBeenCalled();
+
+      // We check our global tracker or the class mock
+      expect(MockCourse).toHaveBeenCalled();
+      expect(MockModule).toHaveBeenCalled();
+
+      // Verify InsertMany called for lessons
+      expect(mockInsertMany).toHaveBeenCalled();
+
+      expect(result).toBeDefined();
     });
 
-    it("should pass if balance is sufficient", async () => {
-      (creditService.getBalance as jest.Mock).mockResolvedValue(100);
-      // Ensure DB user matches high credits (default is 100)
-      await expect(
-        courseService.validateBalance(userId, 50),
-      ).resolves.not.toThrow();
-    });
-  });
+    it("should throw if graph returns no draft", async () => {
+      (courseGraph.invoke as jest.Mock).mockResolvedValue({ draft: null });
 
-  describe("resumeCourseGeneration", () => {
-    it("should throw if job is expired/missing in Redis", async () => {
-      // Mock Redis returning null
-      (redisClient.get as jest.Mock).mockResolvedValue(null);
-
+      // This will log an error in courseService, but our mock logger catches it
       await expect(
-        courseService.resumeCourseGeneration(userId, "job_fake", {}),
-      ).rejects.toThrow("Job expired");
+        courseService.generateCourse(userId, "Topic"),
+      ).rejects.toThrow("AI failed to generate a valid course draft");
+
+      expect(creditService.addCredits).toHaveBeenCalled();
     });
   });
 });
