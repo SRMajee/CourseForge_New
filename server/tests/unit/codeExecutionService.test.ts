@@ -1,10 +1,11 @@
-// ✅ 1. Mock Env FIRST to prevent process.exit(1)
+// ✅ 1. Mock Env FIRST (Prevents process.exit(1) crash)
 jest.mock("../../src/config/env", () => ({
   env: {
     NODE_ENV: "test",
     OPENAI_API_KEY: "mock-key",
     GEMINI_API_KEY: "mock-key",
     GROQ_API_KEY: "mock-key",
+    TAVILY_API_KEY: "mock-key",
   },
 }));
 
