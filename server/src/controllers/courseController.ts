@@ -109,7 +109,7 @@ export const generateCourseOutline = async (req: Request, res: Response) => {
     }
 
     // 4. Queue Job (Pass Mode to Worker)
-    const job = await courseQueue.add("generate_outline", {
+    const job = await courseQueue.add("generate_outline" as any, {
       userId,
       topic,
       action: "generate_outline",
@@ -275,7 +275,7 @@ export const resumeCourse = async (req: Request, res: Response) => {
     );
 
     // 3. Queue Job (Restore Mode from State)
-    const job = await courseQueue.add("generate_outline", {
+    const job = await courseQueue.add("generate_outline" as any, {
       userId,
       topic: state.topic,
       action: "generate_outline",

@@ -80,7 +80,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@langchain/core": "latest"
+      "@langchain/core": "latest",
+      "ioredis": "^5.10.1"
     }
   }
 }
