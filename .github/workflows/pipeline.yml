@@ -18,13 +18,10 @@ jobs:
       run:
         working-directory: ./server
 
-    # 👇 CRITICAL: Override these to work on the CI Host Machine
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       NODE_ENV: test
-      # Use 'localhost' instead of 'mongo' because we are not inside docker-compose here
       MONGO_URI: mongodb://localhost:27017/courseforge_test?replicaSet=rs0
-      # Provide keys for process.env usage
       OPENAI_API_KEY: sk-mock-key
       TAVILY_API_KEY: mock-tavily-key
       GEMINI_API_KEY: mock-gemini-key
