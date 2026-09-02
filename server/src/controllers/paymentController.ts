@@ -86,14 +86,35 @@ export const createCheckoutSession = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Missing packId or planId" });
     }
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
+    // @ts-ignore
+    const user = req.user;
+    let customerId = user?.stripeCustomerId;
+
+    if (!customerId && user?.email) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.name || user.email.split("@")[0],
+        metadata: { userId: userId.toString() },
+      });
+      customerId = customer.id;
+      await User.findByIdAndUpdate(userId, { stripeCustomerId: customerId });
+    }
+
+    const sessionParams: any = {
       line_items: [{ price: priceId, quantity: 1 }],
       mode: mode as any,
       metadata: metadata,
+      customer: customerId,
+      customer_update: customerId ? { address: "auto", name: "auto" } : undefined,
+      saved_payment_method_options: {
+        payment_method_save: "enabled",
+      },
+      automatic_tax: { enabled: false },
       success_url: `${baseUrl}?payment=success=true`,
       cancel_url: `${baseUrl}?payment=cancelled=true`,
-    });
+    };
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     res.json({ url: session.url });
   } catch (error) {
